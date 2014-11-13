@@ -1,0 +1,336 @@
+<?php
+
+/**
+ * @file
+ * Installation specific hooks for CPS module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function cps_schema() {
+  $schema['cps_entity'] = array(
+    'description' => 'Stores the relationships between entity revisions and their containing changesets.',
+    'fields' => array(
+      'entity_type' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'entity_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'revision_id' => array(
+        'description' => 'The id of the entity revision which the changeset points to.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'changeset_id' => array(
+        'description' => 'The changeset id.',
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'published' => array(
+        'description' => 'True if this entity was added to the changeset when it was published.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+    ),
+    'primary key' => array('entity_type', 'entity_id', 'changeset_id'),
+    'indexes' => array(
+      'changeset_id' => array('changeset_id'),
+      'published_changeset_id' => array('published', 'changeset_id'),
+    ),
+  );
+
+  $schema['cps_changeset'] = array(
+    'description' => 'Stores metadata about available changesets.',
+    'fields' => array(
+      'changeset_id' => array(
+        'description' => 'A machine name identifying the changeset.',
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'uid' => array(
+        'description' => 'The owner of the changeset.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'name' => array(
+        'description' => 'A name for the changeset.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'description' => array(
+        'description' => 'A brief description of this changeset.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'medium',
+        'translatable' => TRUE,
+      ),
+      'status' => array(
+        'description' => 'The current status of the changeset.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => 'unpublished',
+      ),
+      'published' => array(
+        'description' => 'Timestamp indicating when the changeset was published.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'variables' => array(
+        'description' => 'A serialized array of variables staged in this changeset.',
+        'type' => 'blob',
+        'size' => 'big',
+        'serialize' => TRUE,
+      ),
+      'created' => array(
+        'description' => 'The Unix timestamp when the entity was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the entity was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('changeset_id'),
+  );
+
+  $schema['cps_changeset_history'] = array(
+    'description' => 'Stores the history of changeset status changes.',
+    'fields' => array(
+      'changeset_id' => array(
+        'description' => 'A machine name identifying the changeset.',
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'uid' => array(
+        'description' => 'The user who made the change.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'previous_status' => array(
+        'description' => 'The previous status.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'new_status' => array(
+        'description' => 'The new status.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'message' => array(
+        'description' => 'An optional message accompanying the change',
+        'type' => 'text',
+        'size' => 'big',
+      ),
+      'timestamp' => array(
+        'description' => 'Timestamp indicating when the status was changed.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array(
+      'changeset_id' => array('changeset_id')
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function cps_install() {
+  // Create the special live/published changeset.
+  db_insert('cps_changeset')
+    ->fields(array(
+      'changeset_id' => CPS_PUBLISHED_CHANGESET,
+      'name' => 'Live',
+      'description' => 'The live changeset. This changeset cannot be edited or deleted.',
+      'published' => 0,
+      'uid' => 1,
+      'status' => 'live',
+    ))
+    ->execute();
+}
+
+/**
+ * Add status, uid fields to changesets. Add changeset history table.
+ */
+function cps_update_7001() {
+  $tables['cps_changeset_history'] = array(
+    'description' => 'Stores the history of changeset status changes.',
+    'fields' => array(
+      'changeset_id' => array(
+        'description' => 'A machine name identifying the changeset.',
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'uid' => array(
+        'description' => 'The user who made the change.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'previous_status' => array(
+        'description' => 'The previous status.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'new_status' => array(
+        'description' => 'The new status.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'message' => array(
+        'description' => 'An optional message accompanying the change',
+        'type' => 'text',
+        'size' => 'big',
+      ),
+      'timestamp' => array(
+        'description' => 'Timestamp indicating when the status was changed.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array(
+      'changeset_id' => array('changeset_id')
+    ),
+  );
+
+  foreach ($tables as $name => $schema) {
+    db_create_table($name, $schema);
+  }
+
+  $fields = array(
+    'cps_changeset' => array(
+      'uid' => array(
+        'description' => 'The owner of the changeset.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'The current status of the changeset.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'created' => array(
+        'description' => 'The Unix timestamp when the entity was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the entity was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'cps_entity' => array(
+      'published' => array(
+        'description' => 'True if this entity was added to the changeset when it was published.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+    ),
+  );
+
+  foreach ($fields as $table => $table_fields) {
+    foreach ($table_fields as $name => $field) {
+      db_add_field($table, $name, $field);
+    }
+  }
+
+  // Update all pre-existing published changesets to the published state.
+  db_update('cps_changeset')
+    ->fields(array(
+      'status' => 'archived'
+    ))
+    ->condition('published', 0, '>')
+    ->execute();
+
+  $result = db_query("SELECT changeset_id FROM {cps_changeset} WHERE changeset_id = 'published'")->fetchCol();
+  if (!$result) {
+    // Create our special live changeset.
+    db_insert('cps_changeset')
+      ->fields(array(
+        'changeset_id' => CPS_PUBLISHED_CHANGESET,
+        'name' => 'Live',
+        'description' => 'The live changeset. This changeset cannot be edited or deleted.',
+        'published' => 0,
+        'uid' => 1,
+        'status' => 'live',
+      ))
+      ->execute();
+  }
+  else {
+    db_query("UPDATE {cps_changeset} SET status = 'live', uid = 1 WHERE changeset_id = 'published'");
+  }
+
+  db_update('cps_changeset')
+    ->fields(array(
+      'status' => 'unpublished'
+    ))
+    ->condition('status', '')
+    ->execute();
+
+}
+
+/**
+ * Add index on {cps_entity}.changeset_id.
+ */
+function cps_update_7100() {
+  if (!db_index_exists('cps_entity', 'changeset_id')) {
+    db_add_index('cps_entity', 'changeset_id', array('changeset_id'));
+  }
+}
+
+/**
+ * Add indexes, remove field_collection_item records.
+ */
+function cps_update_7101() {
+   if (!db_index_exists('cps_entity', 'published_changeset_id')) {
+    db_add_index('cps_entity', 'published_changeset_id', array('published', 'changeset_id'));
+  }
+  db_delete('cps_entity')
+    ->condition('entity_type', 'field_collection_item')
+    ->execute();
+}

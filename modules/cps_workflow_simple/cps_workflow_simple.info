@@ -1,0 +1,6 @@
+name = CPS Simple Workflow
+description = Adds a simple workflow to CPS to submit changesets to an administrator group for publication.
+core = 7.x
+
+dependencies[] = cps
+dependencies[] = mimemail

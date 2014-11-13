@@ -1,0 +1,81 @@
+<?php
+
+/**
+ * @file
+ * Main module file to add CPS support to nodes.
+ */
+
+// -----------------------------------------------------------------------
+// Contrib Hooks
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function cps_node_ctools_plugin_directory($module, $plugin) {
+  if ($module == 'cps') {
+    return 'plugins/' . $plugin;
+  }
+}
+
+// -----------------------------------------------------------------------
+// Drupal Core Hooks
+
+/**
+ * Implements hook_menu_alter().
+ */
+function cps_node_menu_alter(&$items) {
+  // Disable access to the revisions page entirely.
+  $items['node/%node/revisions']['access callback'] = FALSE;
+
+  // And add our history page in its stead.
+  $items['node/%node/history'] = array(
+    'title' => 'History',
+    'page callback' => 'cps_show_revisions_page',
+    'page arguments' => array('node', 1),
+    'access callback' => '_node_revision_access',
+    'access arguments' => array(1),
+    'weight' => 2,
+    'type' => MENU_LOCAL_TASK,
+  );
+
+}
+
+/**
+ * Implements hook_node_access().
+ */
+function cps_node_access($node, $op, $account) {
+  // Special check for unpublished content:
+  // No node content with status 0 (unpublished) should be visible
+  // when viewing the published changeset.
+  $changeset = cps_get_current_changeset(TRUE);
+  if ($changeset == CPS_PUBLISHED_CHANGESET && is_object($node) && $node->status == NODE_NOT_PUBLISHED) {
+    return NODE_ACCESS_DENY;
+  }
+
+  if (module_exists('cps') && !cps_can_edit_entities($op, 'node', $node)) {
+    return NODE_ACCESS_DENY;
+  }
+
+  return NODE_ACCESS_IGNORE;
+}
+
+/**
+ * Implements hook_form_node_form_alter().
+ */
+function cps_node_form_node_form_alter(&$form, &$form_state, &$form_id) {
+  $form['revision_information']['#access'] = FALSE;
+  $form['actions']['submit']['#submit'][] = 'cps_node_node_form_submit';
+}
+
+/**
+ * Submit callback for the node handler.
+ */
+function cps_node_node_form_submit($form, &$form_state) {
+  // Because of revision management in changesets, the aliased path can become invalid
+  // when CPS re-saves the published revision. Force it to go to the unaliased path
+  // to ensure that it always goes to the right place.
+  if (!empty($form_state['redirect']) && !is_array($form_state['redirect'])) {
+    $form_state['redirect'] = array($form_state['redirect'], array('alias' => TRUE));
+  }
+}
+

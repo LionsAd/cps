@@ -1,0 +1,102 @@
+<?php
+/**
+ * @file
+ * Core module to add CPS support to file entities.
+ */
+
+/**
+ * Implements hook_file_entity_access().
+ */
+function cps_file_entity_file_entity_access($op, $file, $account) {
+  // NOTE: This function never gets called if the user has 'bypass file access'
+  // permission. Be sure to check that when debugging why this doesn't work!
+  if (!cps_can_edit_entities($op, 'file', $file)) {
+    return FILE_ENTITY_ACCESS_DENY;
+  }
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function cps_file_entity_ctools_plugin_directory($module, $plugin) {
+  if ($module == 'cps') {
+    return 'plugins/' . $plugin;
+  }
+}
+
+/**
+ * Implements hook_module_implements_alter().
+ */
+function cps_file_entity_module_implements_alter(&$implementations, $hook) {
+  // In most implementations we need to act ahead of file_* everything, but
+  // in the file_entity_edit form, we need to act after file_admin so that
+  // our checkbox doesn't disappear.
+
+  // We can't just use the specific form because drupal_alter makes sure that
+  // everything stays in the order of the 'main' hook, in this case form_alter.
+  if ($hook == 'form_file_entity_edit_alter' || $hook == 'form_alter') {
+    unset($implementations['cps_file_entity']);
+
+    $position = 1;
+    foreach ($implementations as $module => $group) {
+      if ($module == 'file_entity_revisions') {
+        break;
+      }
+      $position++;
+    }
+
+    // Now that we know the position,
+    // slice the array in two and then add together with our entry.
+    $implementations = array_slice($implementations, 0, $position) + array('cps_file_entity' => FALSE) + array_slice($implementations, $position);
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * For form_file_entity_edit.
+ */
+function cps_file_entity_form_file_entity_edit_alter(&$form, &$form_state) {
+  $form['options']['new_revision']['#access'] = FALSE;
+
+  $changeset_id = cps_get_current_changeset();
+  $file = $form_state['file'];
+
+  // If there is not currently a revision set up for this changeset,
+  // force the flag to be true so file_entity_revisions knows to copy
+  // the file.
+  $form['options']['new_revision']['#value'] = empty($file->changeset[$changeset_id]);
+
+  $warning = cps_changeset_edit_warning($file);
+  if ($warning) {
+    drupal_set_message($warning, 'warning');
+  }
+
+}
+
+/**
+ * Implements hook_menu()
+ */
+function cps_file_entity_menu() {
+  $items = array();
+
+  $items['file/%file/history'] = array(
+    'title' => 'History',
+    'page callback' => 'cps_show_revisions_page',
+    'page arguments' => array('file', 1),
+    'access arguments' => array('create files'),
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_admin_paths().
+ */
+function cps_file_entity_admin_paths() {
+  $paths = array(
+    'file/*/history' => TRUE,
+  );
+  return $paths;
+}

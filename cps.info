@@ -1,0 +1,14 @@
+name = Content preview system
+description = Allows the creation of site versions and viewing the system in the context of a particular site version.
+core = 7.x
+
+dependencies[] = ctools
+dependencies[] = entity
+dependencies[] = iib
+
+files[] = plugins/entity/CPSEntityBase.class.php
+files[] = plugins/entity/CPSEntityAPIBase.class.php
+files[] = plugins/entity/CPSEntityPublishableBase.class.php
+files[] = includes/CPSChangeset.class.php
+files[] = includes/CPSChangesetController.class.php
+files[] = includes/CPSEntityAPIControllerFriend.class.php
