@@ -25,6 +25,7 @@ function cps_node_ctools_plugin_directory($module, $plugin) {
  */
 function cps_node_menu_alter(&$items) {
   // Disable access to the revisions page entirely.
+  // @todo diff module is messing this up.
   $items['node/%node/revisions']['access callback'] = FALSE;
 
   // And add our history page in its stead.
@@ -79,3 +80,8 @@ function cps_node_node_form_submit($form, &$form_state) {
   }
 }
 
+function cps_node_admin_paths() {
+  return array(
+    'node/*/history' => TRUE,
+  );
+}
