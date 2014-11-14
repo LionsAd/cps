@@ -41,6 +41,7 @@ class CPSEntityNode extends CPSEntityPublishableBase {
     $entity->original = $original_entity;
     $this->unpublish($entity);
     $entity->log = t('Initial live revision');
+    $entity->vid = NULL;
     _node_save_revision($entity, $entity->uid);
     // Make sure the field data for the live revision gets written so that it is
     // not out of sync.
