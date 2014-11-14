@@ -176,11 +176,11 @@ function cps_workflow_simple_cps_changeset_access_alter(&$access, $op, $changese
  * Implements hook_cps_changeset_history_status_alter().
  */
 function cps_workflow_simple_cps_changeset_history_status_alter(&$status, $changeset, $item) {
-  if ($item->previous_status = 'unpublished' && $item->new_status == 'review') {
+  if ($item->previous_status == 'unpublished' && $item->new_status == 'review') {
     $status = t('Submitted for review');
   }
 
-  if ($item->previous_status = 'review' && $item->new_status == 'unpublished') {
+  if ($item->previous_status == 'review' && $item->new_status == 'unpublished') {
     if ($item->uid == $changeset->uid) {
       $status = t('Withdrawn');
     }

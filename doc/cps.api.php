@@ -120,11 +120,11 @@ function hook_cps_changeset_access_alter(&$access, $op, $changeset, $account) {
  *   The cps_workflow_history entry being displayed.
  */
 function hook_cps_changeset_history_status(&$status, $changeset, $item) {
-  if ($item->previous_status = 'unpublished' && $item->new_status == 'review') {
+  if ($item->previous_status == 'unpublished' && $item->new_status == 'review') {
     $status = t('Submitted for review');
   }
 
-  if ($item->previous_status = 'review' && $item->new_status == 'unpublished') {
+  if ($item->previous_status == 'review' && $item->new_status == 'unpublished') {
     if ($item->uid == $changeset->uid) {
       $status = t('Withdrawn');
     }
