@@ -175,7 +175,7 @@ function cps_install() {
       'name' => 'Live',
       'description' => 'The live changeset. This changeset cannot be edited or deleted.',
       'published' => 0,
-      'uid' => 1,
+      'uid' => 0,
       'status' => 'live',
     ))
     ->execute();

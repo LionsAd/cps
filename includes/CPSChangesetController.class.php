@@ -245,6 +245,8 @@ class CPSChangesetController extends EntityAPIController {
       'getter callback' => 'cps_changeset_metadata_get_properties',
       'computed' => TRUE,
       'entity views field' => TRUE,
+      'type' => 'text',
+      'sanitized' => TRUE,
     );
     $properties['change_count'] = array(
       'label' => t("Changes"),
