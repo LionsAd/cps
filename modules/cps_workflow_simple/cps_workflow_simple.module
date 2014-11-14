@@ -229,7 +229,7 @@ function cps_simple_workflow_submit_page(CPSChangeset $entity) {
  */
 function cps_changeset_submit_changeset_form($form, &$form_state) {
   $form['warning'] = array(
-    '#markup' => '<div class="submit-warning">' . nt('Are you sure you want to submit this for review and publication?') . '</div>',
+    '#markup' => '<div class="submit-warning">' . t('Are you sure you want to submit this for review and publication?') . '</div>',
   );
 
   $form['message'] = array(

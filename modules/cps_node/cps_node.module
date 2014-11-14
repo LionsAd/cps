@@ -44,7 +44,6 @@ function cps_node_menu_alter(&$items) {
  * Implements hook_node_access().
  */
 function cps_node_node_access($node, $op, $account) {
-  drupal_set_message('node access');
   // Special check for unpublished content:
   // No node content with status 0 (unpublished) should be visible
   // when viewing the published changeset.
