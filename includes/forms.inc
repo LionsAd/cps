@@ -258,7 +258,7 @@ function cps_changeset_publish_batch_entities($entity_ids, $changeset, &$context
       $handler->makeChangesetRevisionPublished($entity_id, $changeset->changeset_id);
     }
     $context['sandbox']['progress']++;
-    $context['message'] = nt('Publishing item @index of @count', array('@index' => $index, '@count' => $count));
+    $context['message'] = t('Publishing item @index of @count', array('@index' => $index, '@count' => $count));
   }
   cps_override_changeset(NULL);
 }
