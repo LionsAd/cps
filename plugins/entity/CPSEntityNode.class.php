@@ -15,6 +15,10 @@ class CPSEntityNode extends CPSEntityBase {
     $entity->status = NODE_PUBLISHED;
   }
 
+  // @todo: these fields can probably be handled in the main hook
+  // implementation, if we provide a way to get that via entity info or a
+  // dedicated hook.
+
   public function hook_views_query_alter($view, $query) {
     // Invoke the parent to get any field api changes.
     parent::hook_views_query_alter($view, $query);

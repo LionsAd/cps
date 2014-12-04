@@ -5,6 +5,15 @@
  */
 
 /**
+ * Implements hook_entity_info_alter().
+ */
+function cps_file_entity_entity_info_alter(&$info) {
+  $info['file']['entity keys']['status'] = 'published';
+  $info['file']['entity status']['published'] =  FILE_NOT_PUBLISHED;
+  $info['file']['entity status']['unpublished'];
+}
+
+/**
  * Implements hook_file_entity_access().
  */
 function cps_file_entity_file_entity_access($op, $file, $account) {
@@ -12,15 +21,6 @@ function cps_file_entity_file_entity_access($op, $file, $account) {
   // permission. Be sure to check that when debugging why this doesn't work!
   if (!cps_can_edit_entities($op, 'file', $file)) {
     return FILE_ENTITY_ACCESS_DENY;
-  }
-}
-
-/**
- * Implements hook_ctools_plugin_directory().
- */
-function cps_file_entity_ctools_plugin_directory($module, $plugin) {
-  if ($module == 'cps') {
-    return 'plugins/' . $plugin;
   }
 }
 
