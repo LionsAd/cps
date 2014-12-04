@@ -129,9 +129,6 @@ class CPSEntityBase implements CPSEntityInterface {
    */
   public function hook_entity_load(&$entities) {
     $info = entity_get_info();
-    if (empty($info[$this->entity_type]['entity keys']['revision'])) {
-      return;
-    }
     // When a non-default revision is being loaded, don't overwrite any of the
     // contents of that revision.
     foreach ($entities as $entity) {
@@ -141,7 +138,7 @@ class CPSEntityBase implements CPSEntityInterface {
       // When the new drafty dependency is added, drafty module may not actually
       // be enabled, and this can cause fatal errors on sites that load entities
       // during bootstrap, so check for module existence.
-      if (drafty()->wasRevisionRequested($entity)) {
+      if (module_exists('drafty') && drafty()->wasRevisionRequested($entity)) {
         return;
       }
     }
