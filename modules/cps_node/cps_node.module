@@ -6,18 +6,6 @@
  */
 
 // -----------------------------------------------------------------------
-// Contrib Hooks
-
-/**
- * Implements hook_ctools_plugin_directory().
- */
-function cps_node_ctools_plugin_directory($module, $plugin) {
-  if ($module == 'cps') {
-    return 'plugins/' . $plugin;
-  }
-}
-
-// -----------------------------------------------------------------------
 // Drupal Core Hooks
 
 /**
