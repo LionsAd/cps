@@ -334,3 +334,10 @@ function cps_update_7101() {
     ->condition('entity_type', 'field_collection_item')
     ->execute();
 }
+
+/**
+ * Enable drafty module.
+ */
+function cps_update_7102() {
+  module_enable(array('drafty_enforce'));
+}

@@ -541,11 +541,10 @@ function cps_changeset_unpublish_batch_entity($entity_type, &$context) {
     // Loading entities also has to happen in the published changeset.
     // For each entity whose current revision_id is different from the previous, republish the previous.
     foreach (entity_load($entity_type, array_keys($results[$entity_type])) as $entity) {
-      // Publishing revisions has to happen in the changeset of the revision
-      // being published.
+      // Publishing revisions has to happen in the published revision.
       list($entity_id, $revision_id,) = entity_extract_ids($entity_type, $entity);
       if (isset($changesets[$entity_id]->revision_id) && $revision_id != $changesets[$entity_id]->revision_id) {
-        cps_override_changeset($context['results']['previous']->changeset_id);
+        cps_override_changeset(CPS_PUBLISHED_CHANGESET);
         $handler->makeChangesetRevisionPublished($entity_id, $context['results']['previous']->changeset_id);
       }
       else {
