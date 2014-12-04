@@ -324,59 +324,125 @@ function cps_menu() {
  * Implements hook_entity_load().
  */
 function cps_entity_load(&$entities, $entity_type) {
-  // Delegate to the handler.
-  if ($handler = cps_entity_plugin_get_handler($entity_type)) {
-    $handler->hook_entity_load($entities);
+  $info = entity_get_info($entity_type);
+  if (empty($info['entity keys']['revision'])) {
+    return;
+  }
+  // When a non-default revision is being loaded, don't overwrite any of the
+  // contents of that revision.
+  foreach ($entities as $entity) {
+    // If a revision was requested, then there is only going to be one entity
+    // in the list. We don't touch entity loading when a specific revision was
+    // requested.
+    // When the new drafty dependency is added, drafty module may not actually
+    // be enabled, and this can cause fatal errors on sites that load entities
+    // during bootstrap, so check for module existence.
+    if (module_exists('drafty') && drafty()->wasRevisionRequested($entity)) {
+      return;
+    }
+  }
+
+  $changeset = _cps_get_current_changeset();
+  // Fetch entity state information for not published changesets OR the current one.
+  // We ignore published changesets because those will accrete over time and are generally irrelevant
+  // to our needs.
+  $keys = array_keys($entities);
+
+  // @todo: should this include the actual 'published' changeset, that has
+  // published = 0 so is included in the query.
+  $changesets = $this->getUnpublishedChangesets();
+  if ($changeset) {
+    $changesets[] = $changeset;
+  }
+  $result = db_query('SELECT * FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id IN (:ids) AND changeset_id IN (:changesets)', array(':entity_type' => $this->entity_type, ':ids' => $keys, ':changesets' => $changesets));
+  foreach ($result as $entity_state) {
+    $entities[$entity_state->entity_id]->changeset[$entity_state->changeset_id] = $entity_state;
+  }
+
+  // We only care further if the current changeset is not the published one.
+  if (!$changeset) {
+    return;
+  }
+
+  $revision_key = $entity_info['entity keys']['revision'];
+
+  foreach ($entities as $entity) {
+    list($entity_id, $revision_id, $bundle) = entity_extract_ids($this->entity_type, $entity);
+
+    // If this entity has a revision set for the current change set,
+    // we need to swap it out for the correct revision.
+    if (empty($this->cps_revision_load[$this->entity_type][$entity_id]) &&
+        !empty($entity->changeset[$changeset]) &&
+        $revision_id != $entity->changeset[$changeset]->revision_id) {
+
+      $swap_revision_id = $entity->changeset[$changeset]->revision_id;
+      $this->cps_revision_load[$this->entity_type][$entity_id] = TRUE;
+      $draft_revisions = entity_load($this->entity_type, array($entity_id), array($revision_key => $swap_revision_id));
+      unset($this->cps_revision_load[$this->entity_type][$entity_id]);
+
+      // Swap the entity!
+      if (!empty($draft_revisions[$entity_id])) {
+        $new_entity = $entities[$entity_id] = $draft_revisions[$entity_id];
+        $new_entity->changeset = $entity->changeset;
+        // Store the current revision ID so we can tell later if we need to put it back.
+        $new_entity->published_revision_id = $revision_id;
+        $new_entity->published_revision = clone($entity);
+        // Tell entity API not to save this as the default revision:
+        $new_entity->default_revision = FALSE;
+        $entities[$entity_id] = $new_entity;
+      }
+      else {
+        // This state is invalid, and all we can do is remove the changeset from the list.
+        unset($entity->changeset[$changeset]);
+      }
+    }
+  }
   }
 }
 
-/**
- * Implements hook_entity_presave().
- */
-function cps_entity_presave($entity, $entity_type) {
-  // Delegate to the handler.
-  if ($handler = cps_entity_plugin_get_handler($entity_type)) {
-    $handler->hook_entity_presave($entity);
+function _cps_get_current_changeset() {
+  global $cps_override_changeset;
+  $changeset = isset($cps_override_changeset) ? $cps_override_changeset : cps_get_current_changeset(TRUE);
+  if ($changeset == CPS_PUBLISHED_CHANGESET) {
+    // This one is special, we'll make it NULL to make life easier.
+    $changeset = NULL;
   }
+
+  return $changeset;
 }
 
-/**
- * Implements hook_entity_update().
- */
-function cps_entity_update($entity, $entity_type) {
-  // Delegate to the handler.
-  if ($handler = cps_entity_plugin_get_handler($entity_type)) {
-    $handler->hook_entity_update($entity);
+function _cps_get_unpublished_changesets() {
+  $changesets = &drupal_static(__FUNCTION__);
+  if (!isset($changesets)) { 
+      $changesets = db_query('SELECT changeset_id FROM {cps_changeset} WHERE published = 0')->fetchCol();
   }
+  return $changesets;
 }
 
 /**
  * Implements hook_entity_insert().
  */
 function cps_entity_insert($entity, $entity_type) {
-  // Delegate to the handler.
-  if ($handler = cps_entity_plugin_get_handler($entity_type)) {
-    $handler->hook_entity_insert($entity);
+ // When an new entity is inserted, we actually want two revisions to be saved.
+ //  - An unpublished revision in the 'published' changeset, since CPS treats
+ //    any entity that's never been published as 'unpublished'.
+ //  - A draft revision in the current changeset with the published flag set to
+ //    the same as on the node form.
+  $changeset = $this->getCurrentChangeset();
+  if (!$changeset) {
+    return;
   }
-}
 
-/**
- * Implements hook_entity_delete().
- */
-function cps_entity_delete($entity, $entity_type) {
-  // Delegate to the handler.
-  if ($handler = cps_entity_plugin_get_handler($entity_type)) {
-    $handler->hook_entity_delete($entity);
-  }
-}
+  if (entity_status_supports($entity_type)) {
+    // Operate on a clone to avoid changing the entity prior to subsequent
+    // hook_entity_insert() implementations.
+    $published_entity = clone $original_entity;
 
-/**
- * Implements hook_field_attach_delete_revision().
- */
-function cps_field_attach_delete_revision($entity_type, $entity) {
-  // Delegate to the handler.
-  if ($handler = cps_entity_plugin_get_handler($entity_type)) {
-    $handler->hook_field_attach_delete_revision($entity);
+    // The entity is no longer new.
+    unset($published_entity->is_new);
+
+    entity_status_set($entity_type, $entity, ENTITY_STATUS_UNPUBLISHED;
+    entity_save($this->entity_type, $published_entity);
   }
 }
 
