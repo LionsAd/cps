@@ -62,8 +62,7 @@ the correct changeset revision is JOINed in to the query.
 In order for your custom entity to be visible to CPS, it must implement a plugin.
 
 First, to implement a plugin your module must create an API hook:
-```
-<?php
+```php
 /**
  * Implements hook_ctools_plugin_directory().
  *
@@ -74,15 +73,13 @@ function MYMODULE_plugin_directory($module, $type) {
     return 'plugins/' . $type;
   }
 }
-?>
 ```
 
 Second, in plugins/entity you must have a file whose name corresponds to the
 key of the entity used in hook_entity_info. This file tells CPS what plugin
 class to use:
 
-```
-<?php
+```php
 $plugin = array(
   'handler' => array(
     'class' => 'CPSHANDLERCLASS',
@@ -91,7 +88,7 @@ $plugin = array(
     'path' => drupal_get_path('module', 'MYMODULE') . '/includes'
   ),
 );
-?>
+```
 
 ### Things you have to customize
 
