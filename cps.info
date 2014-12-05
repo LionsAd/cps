@@ -3,12 +3,14 @@ description = Allows the creation of site versions and viewing the system in the
 core = 7.x
 
 dependencies[] = ctools
-dependencies[] = entity_translation ; just add this for testing
 dependencies[] = entity_status
 dependencies[] = iib
 dependencies[] = views
-dependencies[] = drafty
 dependencies[] = drafty_enforce
+
+; just add this for testing
+dependencies[] = entity_translation
+dependencies[] = drafty
 
 files[] = plugins/entity/CPSEntityBase.class.php
 files[] = plugins/entity/CPSEntityAPIBase.class.php
