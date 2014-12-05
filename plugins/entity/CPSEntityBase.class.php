@@ -10,50 +10,42 @@ interface CPSEntityInterface {
   public function hook_entity_load(&$entities);
 
   /**
-   * Implements a delegated hook_entity_load().
+   * Implements a delegated hook_entity_presave().
    */
   public function hook_entity_presave($entity);
 
   /**
-   * Implements a delegated hook_entity_load().
+   * Implements a delegated hook_entity_insert().
    */
   public function hook_entity_insert($entity);
 
   /**
-   * Implements a delegated hook_entity_load().
+   * Implements a delegated hook_entity_update().
    */
   public function hook_entity_update($entity);
 
   /**
-   * Implements a delegated hook_entity_load().
+   * Implements a delegated hook_entity_delete().
    */
   public function hook_entity_delete($entity);
 
   /**
-   * Implements a delegated hook_entity_load().
+   * Implements a delegated hook_entity_revision().
    */
   public function hook_field_attach_delete_revision($entity);
 
   /**
-   * Implements a delegated hook_entity_load().
+   * Implements a delegated hook_entity_query_alter().
    */
   public function hook_views_query_alter($view, $query);
 
   /**
-   * Set the revision flag forcing the entity to save a new revision.
+   * Set the revision log for an entity.
    *
    * @param object $entity
-   *   The entity to work on.
+   *   The entity object.
    */
-  public function setRevisionFlag($entity);
-
-  /**
-   * Unset the revision flag forcing the entity to save an existing revision.
-   *
-   * @param object $entity
-   *   The entity to work on.
-   */
-  public function unsetRevisionFlag($entity);
+  public function setRevisionLog($entity);
 
   /**
    * Make the specified changeset the current, published revision for the entity.
@@ -64,16 +56,6 @@ interface CPSEntityInterface {
    *   The changeset to make published.
    */
   public function makeChangesetRevisionPublished($entity, $changeset_id);
-
-  /**
-   * Restore the published data of the entity.
-   *
-   * When field API writes a revision, it always writes data to the 'current' table.
-   * We need to put the correct data back.
-   *
-   * @param object $entity
-   */
-  public function restoreEntityData($entity);
 
   /**
    * Fetch the current changeset.
@@ -146,14 +128,22 @@ class CPSEntityBase implements CPSEntityInterface {
    * @{inheritdoc}
    */
   public function hook_entity_load(&$entities) {
-    $changeset = $this->getCurrentChangeset();
-
-    // During a revision reset, we do not override what entity is actually being loaded nor
-    // do we add our data to it.
-    if (!empty($this->cps_revision_reset)) {
-      return;
+    $info = entity_get_info();
+    // When a non-default revision is being loaded, don't overwrite any of the
+    // contents of that revision.
+    foreach ($entities as $entity) {
+      // If a revision was requested, then there is only going to be one entity
+      // in the list. We don't touch entity loading when a specific revision was
+      // requested.
+      // When the new drafty dependency is added, drafty module may not actually
+      // be enabled, and this can cause fatal errors on sites that load entities
+      // during bootstrap, so check for module existence.
+      if (module_exists('drafty') && drafty()->wasRevisionRequested($entity)) {
+        return;
+      }
     }
 
+    $changeset = $this->getCurrentChangeset();
     // Fetch entity state information for not published changesets OR the current one.
     // We ignore published changesets because those will accrete over time and are generally irrelevant
     // to our needs.
@@ -215,53 +205,13 @@ class CPSEntityBase implements CPSEntityInterface {
    * @{inheritdoc}
    */
   public function hook_entity_presave($entity) {
-    // During a revision reset, we do not do anything to deal with changes.
-    if (!empty($this->cps_revision_reset)) {
-      return;
-    }
 
     $changeset = $this->getCurrentChangeset();
-    $this->unsetRevisionFlag($entity);
-
-    // If we do not support a publishing flag, there is nothing to do on insert.
+    // If we're not in a changeset, don't automate the revision log.
     if (!$changeset) {
       return;
     }
-
-
-    // If creating a new entity and the changeset is set,
-    list($entity_id, $revision_id, $bundle) = entity_extract_ids($this->entity_type, $entity);
-    if (!$entity_id) {
-      // Make sure the revision being created gets the appropriate log message.
-      $this->setRevisionFlag($entity);
-    }
-    else {
-      // This is never the default revision - if we reach here.
-      $entity->default_revision = FALSE;
-      // Check to see if the current revision id is the changeset revision id.
-      // If so, force creating a new revision.
-      $published_revision_id = isset($entity->published_revision_id) ? $entity->published_revision_id : $revision_id;
-      if (empty($entity->changeset[$changeset])) {
-        $this->setRevisionFlag($entity);
-        // And make sure we put it back to this revision id after saving the new one.
-        if (!isset($entity->published_revision_id)) {
-          // If there isn't a published revision this entity was possibly
-          // created during a form submission. If so, try $entity->original
-          // where Drupal typically puts it.
-          if (isset($entity->original)) {
-            $entity->published_revision = $entity->original;
-            list(,$entity->published_revision_id) = entity_extract_ids($this->entity_type, $entity->original);
-          }
-          else {
-            $entity->published_revision_id = $published_revision_id;
-            $entity_info = entity_get_info($this->entity_type);
-            $revision_key = $entity_info['entity keys']['revision'];
-            $published = entity_load($this->entity_type, array($entity_id), array($revision_key => $published_revision_id));
-            $entity->published_revision = reset($published);
-          }
-        }
-      }
-    }
+    $this->setRevisionLog($entity);
   }
 
   /**
@@ -269,19 +219,12 @@ class CPSEntityBase implements CPSEntityInterface {
    */
   public function hook_entity_insert($entity) {
     $changeset = $this->getCurrentChangeset();
-
-    // During a revision reset, we do not do anything to deal with changes.
-    if (!empty($this->cps_revision_reset)) {
-      return;
-    }
-
     // If we are not writing to a changeset, there is nothing to do here.
     if (!$changeset) {
       return;
     }
 
-    list($entity_id, $revision_id, $bundle) = entity_extract_ids($this->entity_type, $entity);
-
+    list($entity_id, $revision_id) = entity_extract_ids($this->entity_type, $entity);
     // Store state information.
     db_insert('cps_entity')
       ->fields(array(
@@ -300,48 +243,19 @@ class CPSEntityBase implements CPSEntityInterface {
     $changeset = $this->getCurrentChangeset();
 
 
-    // During a revision reset, we do not do anything to deal with changes.
-    // Except clean up field collections.
-    if (!empty($this->cps_revision_reset)) {
-      $this->fieldCollectionSetArchived($entity, $entity->published_revision);
-      return;
-    }
-
     // If we are not on a change set, do nothing.
     if (!$changeset) {
       return;
     }
 
-    list($entity_id, $revision_id, $bundle) = entity_extract_ids($this->entity_type, $entity);
-    // If $revision_id matches the changeset revision ID, we just need to flag this
-    // to have the published revision put back at the end.
-
-    // If $revision_id does not match the changeset, we need to force creating a new revision.
-    $published_revision_id = isset($entity->published_revision_id) ? $entity->published_revision_id : $revision_id;
-    if (!empty($entity->changeset[$changeset]) && $published_revision_id == $entity->changeset[$changeset]->revision_id) {
-      // In general this can only happen if there isn't actually a published revision.
+    // If this isn't a draft revision, do nothing.
+    // @todo: might actually want to update the 'published' revision here
+    // instead of nothing.
+    if (empty($entity->is_draft_revision)) {
       return;
     }
 
-    // When fields are translatable. Translations from the draft revision can
-    // end up in the field_data_* tables because field_sql_storage module always
-    // writes to both the 'current' and 'revision' tables, and has no concept of
-    // draft revisions. To avoid stale/incorrect data in those tables, delete
-    // any values that don't belong to the published revision ID.
-    if (!empty($entity->published_revision_id) &&  $entity->published_revision_id != $revision_id) {
-      // @todo This is going to be broken with a hardcoded reference to 'node' here.
-      foreach (field_info_instances('node', $bundle) as $instance) {
-        $field = field_info_field($instance['field_name']);
-        if (!empty($field['translatable']) && isset($field['storage']['details']['sql'][FIELD_LOAD_CURRENT])) {
-          $table = key($field['storage']['details']['sql'][FIELD_LOAD_CURRENT]);
-          db_delete($table)
-            ->condition('entity_id', $entity_id)
-            ->condition('revision_id', $entity->published_revision_id, '<>')
-            ->execute();
-        }
-      }
-    }
-
+    list($entity_id, $revision_id) = entity_extract_ids($this->entity_type, $entity);
     // Store state information.
     db_merge('cps_entity')
       ->key(array(
@@ -353,8 +267,6 @@ class CPSEntityBase implements CPSEntityInterface {
         'revision_id' => $revision_id,
       ))
       ->execute();
-
-    $this->restoreEntityData($entity);
   }
 
   /**
@@ -385,53 +297,24 @@ class CPSEntityBase implements CPSEntityInterface {
   /**
    * @{inheritdoc}
    */
-  public function restoreEntityData($entity) {
-    if (!isset($entity->published_revision)) {
-      // Not much we can do if this isn't set -- it should always have been set on load.
-      return;
+  public function setRevisionLog($entity) {
+    $changeset = cps_changeset_load($this->getCurrentChangeset());
+    if ($changeset) {
+      $name = $changeset->name;
     }
-
-    $published_revision = $entity->published_revision;
-    // Make sure that file fields don't try funny business.
-    $published_revision->original = $published_revision;
-    // Restore field API data.
-    $published_revision->revision = FALSE;
-    field_attach_update($this->entity_type, $published_revision);
-
-    // If the entity itself has to restore its own data, that will need to happen in an
-    // override of this method.
-  }
-
- /**
-   * @{inheritdoc}
-   */
-  public function setRevisionFlag($entity, $set_log = TRUE) {
-    // This will have to be overridden for any entity that uses an alternative method.
-    $entity->revision = TRUE;
-
-    if ($set_log) {
-      $changeset = cps_changeset_load($this->getCurrentChangeset());
-      if ($changeset) {
-        $name = $changeset->name;
-      }
-      else {
-        $name = $this->getCurrentChangeset() ? $this->getCurrentChangeset() : 'Published';
-      }
-      $entity->log = t('Revision for site version %changeset', array('%changeset' => $name));
+    else {
+      $name = $this->getCurrentChangeset() ? $this->getCurrentChangeset() : 'Published';
     }
-  }
-
-  /**
-   * @{inheritdoc}
-   */
-  public function unsetRevisionFlag($entity) {
-    $entity->revision = FALSE;
+    $entity->log = t('Revision for site version %changeset', array('%changeset' => $name));
   }
 
   /**
    * @{inheritdoc}
    */
   public function makeChangesetRevisionPublished($entity_id, $changeset_id) {
+    // When publishing a changeset, ensure that CPS treats any entity loads as
+    // if they're in the currently published changeset.
+    cps_override_changeset(CPS_PUBLISHED_CHANGESET);
     // Find the revision id.
     $revision_id = db_query('SELECT revision_id FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id = :entity_id AND changeset_id = :changeset',
     array(
@@ -440,37 +323,7 @@ class CPSEntityBase implements CPSEntityInterface {
       ':changeset' => $changeset_id,
     ))->fetchField();
 
-    // Load that revision.
-    $entity_info = entity_get_info($this->entity_type);
-    $revision_key = $entity_info['entity keys']['revision'];
-    $changeset_revisions = entity_load($this->entity_type, array($entity_id), array($revision_key => $revision_id));
-    $entity = $changeset_revisions[$entity_id];
-
-    // Ensure that $entity->original is set with the same data as the revision
-    // being saved. This ensures that modules with references to other entities,
-    // such as file or field_collection do not attempt to remove referenced
-    // items from the published revision.
-    $current = $this->getCurrentChangeset();
-
-    // Add the published version of the entity for hook implementations to
-    // inspect.
-    cps_override_changeset(CPS_PUBLISHED_CHANGESET);
-    if (!isset($entity->published_revision)) {
-      $entity->published_revision = entity_load_single($this->entity_type, $entity_id);
-    }
-    $entity->original = $entity;
-
-    // Set the flag to tell our save not to interfere.
-    $this->cps_revision_reset = TRUE;
-
-    // Entity API uses a default_revision keyword that needs to be honored to make this revision default.
-    $entity->default_revision = TRUE;
-
-    // Save the entity.
-    entity_save($this->entity_type, $entity);
-    cps_override_changeset($current);
-
-    $this->cps_revision_reset = FALSE;
+    drafty()->publishRevision($this->entity_type, $entity_id, $revision_id);
   }
 
   /**
@@ -872,94 +725,6 @@ class CPSEntityBase implements CPSEntityInterface {
   public function resetCache() {
     $controller = entity_get_controller($this->entity_type);
     $controller->resetCache();
-  }
-
-  /**
-   * Removes field collections before creating initial unpublished revision.
-   *
-   * @param $entity
-   */
-  protected function fieldCollectionRemove($entity) {
-    list($id, $vid, $bundle) = entity_extract_ids($this->entity_type, $entity);
-    $instances = field_info_instances($this->entity_type, $bundle);
-    foreach ($instances as $field_name => $instance) {
-      $field = field_info_field($field_name);
-      if ($field['type'] == 'field_collection') {
-        $entity->{$field_name} = array();
-      }
-    }
-  }
-
-  /**
-   * Set the archived flag for field collections during CPS publishing.
-   */
-  protected function fieldCollectionSetArchived($entity, $published) {
-    // field_collection_field_update() does not run most of its logic when
-    // the entity is not a new revision.
-    // Additionally even if it did run, since we set $entity->original
-    // = $entity when publishing, the logic for setting previously referenced
-    // field collections would not fire correctly.
-    // @todo: always save a new revision both within changesets and when
-    // publishing, which should make this code unnecessary.
-    list($id, $vid, $bundle) = entity_extract_ids($this->entity_type, $entity);
-    $instances = field_info_instances($this->entity_type, $bundle);
-    $archived_ids = array();
-    foreach ($instances as $field_name => $instance) {
-      $field = field_info_field($field_name);
-      if ($field['type'] == 'field_collection') {
-        $new_items = field_get_items($this->entity_type, $entity, $field_name);
-        $old_items = field_get_items($this->entity_type, $published, $field_name);
-        // Account for re-ordering of the deltas.
-        if ($old_items) {
-          foreach ($old_items as $old_item) {
-            $archived_ids[$old_item['value']] = $old_item['value'];
-          }
-        }
-        if ($new_items) {
-          foreach ($new_items as $new_item) {
-            // If this is already published, the archived flag will be correct.
-            if (isset($archived_ids[$new_item['value']])) {
-              unset($archived_ids[$new_item['value']]);
-            }
-            // Save the new fc_item to make it default.
-            // FC does not care about re-saves of host entity
-            // unless a new revision is specified or $item['entity'] == TRUE.
-            $fc_entity = field_collection_field_get_entity($new_item);
-            $fc_entity->revision = FALSE;
-            $fc_entity->default_revision = TRUE;
-            $fc_entity->archived = FALSE;
-
-            // Set the flag to tell our save not to interfere.
-            // This ensures this works recursively on FCs of FCs.
-            // @todo need the previously published version, for this item, too.
-            // @todo If we had more than one level of field collections, that
-            //       are editable we would need to ensure
-            //       fieldCollectionSetArchived is called also for
-            //       field_collection_items, but fortunately we don't so this
-            //       is fine. (e.g. field_event_standard_rule cannot be edited)
-            $this->cps_revision_reset = TRUE;
-
-            // Setup published_revision and original in the same way as when
-            // making published.
-            if (!isset($fc_entity->published_revision)) {
-              $fc_entity->published_revision = entity_load_single('field_collection_item', $fc_entity->internalIdentifier());
-            }
-            // This is very important as else FC tries to delete the current revision
-            // and with that the FC item itself, which we don't want.
-            $fc_entity->original = $fc_entity;
-
-            // Save the field collection recursively.
-            $fc_entity->save(TRUE);
-          }
-        }
-      }
-    }
-    if (!empty($archived_ids)) {
-      db_update('field_collection_item')
-        ->condition('item_id', $archived_ids)
-        ->fields(array('archived' => 1))
-        ->execute();
-    }
   }
 
   /**
