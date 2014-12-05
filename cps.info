@@ -10,6 +10,7 @@ dependencies[] = drafty_enforce
 
 ; just add this for testing
 dependencies[] = entity_translation
+dependencies[] = field_collection
 dependencies[] = drafty
 
 files[] = plugins/entity/CPSEntityBase.class.php
