@@ -72,6 +72,8 @@ mysql:
   encoding: utf8
 
 before_install:
+# put entity_status in cps code base for now.
+  - git clone --branch 7.x-1.x http://git.drupal.org/sandbox/catch/2387849.git entity_status
   - composer self-update
 #  - cd ./tests
   - composer global require "lionsad/drupal_ti:1.*"
