@@ -465,7 +465,7 @@ function cps_entity_update($entity, $entity_type) {
   // If this isn't a draft revision, do nothing.
   // @todo: might actually want to update the 'published' revision here
   // instead of nothing.
-  if (empty($entity->is_draft_revision) && empty($entity->cps_initial_unpublished)) {
+  if (drafty()->isDraftRevision($entity) && empty($entity->cps_initial_unpublished)) {
     return;
   }
 
@@ -1270,7 +1270,7 @@ function cps_can_edit_entities($op, $entity_type, $entity, $changeset_id = NULL)
       return TRUE;
     }
 
-    if (entity_status_supports($entity_type)) {
+    if (entity_status_supported($entity_type)) {
       return entity_status_get($entity_type, $entity);
     }
     else {
@@ -1347,7 +1347,7 @@ function cps_can_delete_entity($entity_type, $entity) {
     return TRUE;
   }
 
-  if (!entity_status_supports($entity_type)) {
+  if (!entity_status_supported($entity_type)) {
     return FALSE;
   }
 
@@ -1566,7 +1566,7 @@ function cps_diff($entity_type, $old, $new, $state = 'raw') {
     // If it doesn't support the log property, as files do not,
     // it is a bit tougher to determine if it's newly created. But
     // it can be done.
-    if (entity_status_supports($entity_type) && entity_status_get($entity_type, $entity)) {
+    if (entity_status_supported($entity_type) && entity_status_get($entity_type, $entity)) {
       $is_new = TRUE;
     }
   }
