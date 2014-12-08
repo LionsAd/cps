@@ -10,7 +10,7 @@
 function cps_file_entity_entity_info_alter(&$info) {
   $info['file']['entity keys']['status'] = 'published';
   $info['file']['entity status']['published'] =  FILE_NOT_PUBLISHED;
-  $info['file']['entity status']['unpublished'];
+  $info['file']['entity status']['unpublished'] = FILE_PUBLISHED;
 }
 
 /**
