@@ -428,7 +428,7 @@ function cps_entity_insert($entity, $entity_type) {
   }
 
 
-  if (entity_status_supports($entity_type)) {
+  if (cps_is_supported($entity_type)) {
     list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
     db_insert('cps_entity')
       ->fields(array(
