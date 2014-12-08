@@ -7,6 +7,14 @@
 
 // -----------------------------------------------------------------------
 // Drupal Core Hooks
+//
+
+/**
+ * Implements hook_entity_info_alter().
+ */
+function cps_node_entity_info_alter(&$info) {
+  $info['node']['cps'] = TRUE;
+}
 
 /**
  * Implements hook_menu_alter().
