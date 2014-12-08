@@ -324,8 +324,8 @@ function cps_menu() {
  * Implements hook_entity_load().
  */
 function cps_entity_load(&$entities, $entity_type) {
-  $info = entity_get_info($entity_type);
-  if (empty($info['entity keys']['revision'])) {
+  $entity_info = entity_get_info($entity_type);
+  if (empty($entity_info['entity keys']['revision'])) {
     return;
   }
   // When a non-default revision is being loaded, don't overwrite any of the
@@ -427,16 +427,28 @@ function cps_entity_insert($entity, $entity_type) {
     return;
   }
 
+
   if (entity_status_supports($entity_type)) {
+    list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
+    db_insert('cps_entity')
+      ->fields(array(
+        'entity_type' => $entity_type,
+        'entity_id' => $entity_id,
+        'changeset_id' => $changeset,
+        'revision_id' => $revision_id,
+     ))->execute();
     // Operate on a clone to avoid changing the entity prior to subsequent
     // hook_entity_insert() implementations.
-    $published_entity = clone $original_entity;
+    $live_revision = clone $entity;
 
     // The entity is no longer new.
-    unset($published_entity->is_new);
+    unset($live_revision->is_new);
 
-    entity_status_set($entity_type, $entity, ENTITY_STATUS_UNPUBLISHED);
-    entity_save($this->entity_type, $published_entity);
+    entity_status_set($entity_type, $live_revision, ENTITY_UNPUBLISHED);
+
+    $live_revision->cps_initial_unpublished = TRUE;
+    module_invoke_all('cps_live_revision', $entity_type, $live_revision);
+    entity_save($entity_type, $live_revision);
   }
 }
 
@@ -444,7 +456,7 @@ function cps_entity_insert($entity, $entity_type) {
  * Implements hook_entity_update().
  */
 function cps_entity_update($entity, $entity_type) {
-  $changeset = $this->getCurrentChangeset();
+  $changeset = cps_get_current_changeset();
   // If we are not on a change set, do nothing.
   if (!$changeset) {
     return;
@@ -453,8 +465,12 @@ function cps_entity_update($entity, $entity_type) {
   // If this isn't a draft revision, do nothing.
   // @todo: might actually want to update the 'published' revision here
   // instead of nothing.
-  if (empty($entity->is_draft_revision)) {
+  if (empty($entity->is_draft_revision) && empty($entity->cps_initial_unpublished)) {
     return;
+  }
+
+  if (!empty($entity->cps_initial_unpublished)) {
+    $changeset = 'initial';
   }
 
   list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
@@ -495,21 +511,6 @@ function cps_field_attach_delete_revision($entity_type, $entity) {
 }
 
 /**
- * Publish the revision for an entity from a changeset.
- */
-function cps_publish_revision_in_changeset($entity_id, $changeset_id) {
-  // @todo: why not revision ID as argument?
-  $revision_id = db_query('SELECT revision_id FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id = :entity_id AND changeset_id = :changeset',
-    array(
-      ':entity_type' => $this->entity_type,
-      ':entity_id' => $entity_id,
-      ':changeset' => $changeset_id,
-    ))->fetchField();
-
-  drafty()->publishRevision($this->entity_type, $entity_id, $revision_id);
-}
-
-/**
  * Implements hook_entity_query_alter().
  *
  * @param $query
@@ -533,8 +534,7 @@ function cps_entity_query_alter($query) {
 
   // Only bother if it's a supported, revisioned entity type.
   $entity_type = $query->entityConditions['entity_type']['value'];
-  $handler = cps_entity_plugin_get_handler($entity_type);
-  if (!$handler) {
+  if (!cps_is_supported($entity_type)) {
     return;
   }
 
@@ -736,18 +736,6 @@ function cps_form_views_exposed_form_alter(&$form, &$form_state, $form_id) {
 // Contrib Hooks
 
 /**
- * Implements hook_ctools_plugin_type().
- */
-function cps_ctools_plugin_type() {
-  $items['entity'] = array(
-    'cache' => FALSE,
-    'classes' => array('handler'),
-  );
-
-  return $items;
-}
-
-/**
  * Implements hook_ctools_plugin_directory().
  */
 function cps_ctools_plugin_directory($module, $plugin) {
@@ -868,7 +856,7 @@ function cps_views_query_alter_entity($view, $query, $entity_type) {
       // non-revisioned entities might have field_data_* fields and we do NOT want
       // to muck with those by accident!
       $table_data = views_fetch_data($query->relationships[$relationship]['base']);
-      if (empty($table_data['table']['entity type']) || $table_data['table']['entity type'] != $this->entity_type) {
+      if (empty($table_data['table']['entity type']) || $table_data['table']['entity type'] != $entity_type) {
         continue;
       }
 
@@ -882,7 +870,7 @@ function cps_views_query_alter_entity($view, $query, $entity_type) {
       $new_table_name = 'field_revision_' . substr($table_info['table'], 11);
 
       // Now add the cps_entity table.
-      $cps_entity_table = $this->viewsEnsureCPSTable($query, $relationship);
+      $cps_entity_table = cps_ensure_cps_table($entity_type, $query, $relationship);
 
       // Update the join to use our coalesce
       $revision_field = $entity_info['entity keys']['revision'];
@@ -922,7 +910,7 @@ function cps_views_query_alter_entity($view, $query, $entity_type) {
   }
 
   $entity_table = $entity_info['base table'];
-  $test_fields = $this->getRevisionFields();
+  $test_fields = cps_get_revision_fields($entity_type);
   // Go through and look to see if we have to modify fields and filters
   // for $entity_table.status, $entity_table.sticky.
   // but we currently do not use those fields.
@@ -937,7 +925,7 @@ function cps_views_query_alter_entity($view, $query, $entity_type) {
     $table = $query->table_queue[$field_info['table']]['table'];
     if ($table == $entity_table && in_array($field_info['field'], $test_fields)) {
       $relationship = $query->table_queue[$field_info['table']]['alias'];
-      $alias = $this->viewsEnsureRevisionTable($query, $relationship);
+      $alias = cps_ensure_revision_table($entity_type, $query, $relationship);
       if ($alias) {
         // Change the base table to use the revision table instead.
         $field_info['table'] = $alias;
@@ -961,7 +949,7 @@ function cps_views_query_alter_entity($view, $query, $entity_type) {
       foreach ($relationships as $relationship) {
         foreach ($test_fields as $field) {
           if (is_string($where_info['field']) && $where_info['field'] == "$relationship.$field") {
-            $alias = $this->viewsEnsureRevisionTable($query, $relationship);
+            $alias = cps_ensure_revision_table($entity_type, $query, $relationship);
             if ($alias) {
               // Change the base table to use the revision table instead.
               $where_info['field'] = "$alias.$field";
@@ -976,7 +964,7 @@ function cps_views_query_alter_entity($view, $query, $entity_type) {
 /**
  * Helper for hook_views_query_alter().
  */
-function cps_ensure_cps_table($query, $relationship) {
+function cps_ensure_cps_table($entity_type, $query, $relationship) {
   $changeset_id = cps_get_current_changeset();
   $changeset = cps_changeset_load($changeset_id);
 
@@ -996,7 +984,7 @@ function cps_ensure_cps_table($query, $relationship) {
     'extra' => array(
       array(
         'field' => 'entity_type',
-        'value' => $this->entity_type,
+        'value' => $entity_type,
       ),
       array(
         'field' => 'changeset_id',
@@ -1010,6 +998,47 @@ function cps_ensure_cps_table($query, $relationship) {
   $join->adjusted = TRUE;
 
   return $query->queue_table('cps_entity', $relationship, $join);
+}
+
+/**
+ * Add the revision table for the entity type for the current changeset to a query.
+ *
+ * @param views_plugin_query $query
+ *   The views query plugin.
+ * @param string $relationship
+ *   The name of the relationship.
+ *
+ * @return string $alias
+ *   The alias of the relationship.
+ */
+function cps_ensure_revision_table($entity_type, $query, $relationship) {
+  // Get the alias for the {cps_entity} table we chain off of in the COALESCE
+  $cps_entity_table = cps_ensure_cps_table($entity_type, $query, $relationship);
+
+  // Get the name of the revision table and revision key.
+  $entity_info = entity_get_info($entity_type);
+  $table = $entity_info['revision table'];
+  $field = $entity_info['entity keys']['revision'];
+
+  // Add this table only once.
+  if (isset($query->tables[$relationship][$table])) {
+    return $query->tables[$relationship][$table]['alias'];
+  }
+
+  // Construct the join.
+  $join = new views_join();
+  $join->definition = array(
+    'table' => $table,
+    'field' => $field,
+    // Making this explicitly null allows $left_table to be a formula
+    'left_table' => NULL,
+    'left_field' => "COALESCE($cps_entity_table.revision_id, $relationship.$field)",
+  );
+
+  $join->construct();
+  $join->adjusted = TRUE;
+
+  return $query->queue_table($table, $relationship, $join);
 }
 
 /**
@@ -1035,12 +1064,18 @@ function cps_get_revision_fields($entity_type) {
  * Sets the revision log for an entity.
  */
 function cps_set_revision_log($entity) {
-  $changeset = cps_changeset_load($this->getCurrentChangeset());
-  if ($changeset) {
-    $name = $changeset->name;
+  $current_changeset = cps_get_current_changeset();
+  if ($current_changeset) {
+    $changeset = cps_changeset_load($current_changeset);
+    if ($changeset) {
+      $name = $changeset->name;
+    }
+    else {
+      $name = $current_changeset;
+    }
   }
   else {
-    $name = $this->getCurrentChangeset() ? $this->getCurrentChangeset() : 'Published';
+    $name = 'Published';
   }
   $entity->log = t('Revision for site version %changeset', array('%changeset' => $name));
 }
@@ -1089,7 +1124,6 @@ function cps_get_current_changeset($test = FALSE) {
   if (isset($GLOBALS['cps_override_changeset'])) {
     return $GLOBALS['cps_override_changeset'];
   }
-  $changeset = isset($cps_override_changeset) ? $cps_override_changeset : cps_get_current_changeset(TRUE);
   if (!function_exists('user_access')) {
     drupal_load('module', 'user');
   }
@@ -1111,7 +1145,7 @@ function cps_get_current_changeset($test = FALSE) {
 
   // Use a $test flag because there are phases where we do not want to invoke
   // a load.
-  if ($test) {
+  if ($test && $changeset_id) {
     $changeset = cps_changeset_load($changeset_id);
     if (!$changeset) {
       $changeset_id = CPS_PUBLISHED_CHANGESET;
@@ -1154,7 +1188,7 @@ function cps_override_changeset($changeset_id) {
   // the cache.
   foreach (entity_get_info() as $entity_type => $entity_info) {
     if (cps_is_supported($entity_type)) {
-      entity_get_controller($entity_type->resetCache());
+      entity_get_controller($entity_type)->resetCache();
     }
   }
 }
@@ -1167,6 +1201,38 @@ function cps_override_changeset($changeset_id) {
 function cps_is_supported($entity_type) {
   $info = entity_get_info($entity_type);
   return !empty($info['cps']);
+}
+
+/**
+ * Get supported entity types.
+ */
+function cps_get_supported() {
+  $types = array();
+  $info = entity_get_info();
+  foreach ($info as $entity_type => $entity_info) {
+    if (!empty($entity_info['cps'])) {
+      $types[] =  $entity_type;
+    }
+  }
+  return $types;
+}
+
+/**
+ * @{inheritdoc}
+ */
+function cps_make_revision_published($entity_type, $entity_id, $changeset_id) {
+
+  cps_override_changeset(CPS_PUBLISHED_CHANGESET);
+  // Find the revision id.
+  $revision_id = db_query('SELECT revision_id FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id = :entity_id AND changeset_id = :changeset',
+  array(
+    ':entity_type' => $entity_type,
+    ':entity_id' => $entity_id,
+    ':changeset' => $changeset_id,
+  ))->fetchField();
+
+  drafty()->publishRevision($entity_type, $entity_id, $revision_id);
+  cps_override_changeset(NULL);
 }
 
 /**
@@ -1204,11 +1270,8 @@ function cps_can_edit_entities($op, $entity_type, $entity, $changeset_id = NULL)
       return TRUE;
     }
 
-    $handler = cps_entity_plugin_get_handler($entity_type);
-
-    // If using the publishable interface, ask if the entity is published.
-    if (is_subclass_of($handler, 'CPSEntityPublishableInterface')) {
-      return $handler->isPublished($entity);
+    if (entity_status_supports($entity_type)) {
+      return entity_status_get($entity_type, $entity);
     }
     else {
       return TRUE;
@@ -1284,9 +1347,7 @@ function cps_can_delete_entity($entity_type, $entity) {
     return TRUE;
   }
 
-  // If the entity doesn't support publishing, deny.
-  $handler = cps_entity_plugin_get_handler($entity_type);
-  if (!($handler instanceof CPSEntityPublishableInterface)) {
+  if (!entity_status_supports($entity_type)) {
     return FALSE;
   }
 
@@ -1294,7 +1355,7 @@ function cps_can_delete_entity($entity_type, $entity) {
   // deny.
   foreach ($result as $revision_id) {
     $revision = entity_revision_load($entity_type, $revision_id);
-    if ($revision && $handler->isPublished($revision)) {
+    if ($revision && entity_status_get($entity_type, $revision)) {
       return FALSE;
     }
   }
@@ -1333,7 +1394,7 @@ function cps_get_changesets() {
   }
 
   $published = array(
-    'published' => t('Live'),
+    0 => t('Live'),
   );
 
   $recent = array();
@@ -1415,9 +1476,6 @@ function cps_changeset_get_states() {
  * for an entity to override the revisions page and show a CPS friendly
  * version of it.
  *
- * It uses a pass-through to the handler so that, if needed, individual
- * plugins can render the page differently with relative ease.
- *
  * @param string $entity_type
  *   The entity type of the entity.
  * @param object $entity
@@ -1427,9 +1485,9 @@ function cps_changeset_get_states() {
  *   A Drupal renderable array of the page.
  */
 function cps_show_revisions_page($entity_type, $entity) {
-  // Delegate to the handler.
-  if ($handler = cps_entity_plugin_get_handler($entity_type)) {
-    return $handler->revisionsPage($entity);
+  // @todo: no real need for a wrapper here.
+  if (cps_is_supported($entity_type)) {
+    cps_revisions_page($entity, $entity_type);
   }
 
   return array();
@@ -1508,8 +1566,7 @@ function cps_diff($entity_type, $old, $new, $state = 'raw') {
     // If it doesn't support the log property, as files do not,
     // it is a bit tougher to determine if it's newly created. But
     // it can be done.
-    $handler = cps_entity_plugin_get_handler($entity_type);
-    if ($handler instanceof CPSEntityPublishableInterface && !$handler->isPublished($old)) {
+    if (entity_status_supports($entity_type) && entity_status_get($entity_type, $entity)) {
       $is_new = TRUE;
     }
   }
@@ -2142,7 +2199,7 @@ function cps_revisions_page($entity, $entity_type) {
   $live_revision_id = isset($entity->published_revision_id) ? $entity->published_revision_id : $revision_id;
 
   $uri = entity_uri($entity_type, $entity);
-  drupal_set_title(t('History for %title', array('%title' => entity_label($this->entity_type, $entity))), PASS_THROUGH);
+  drupal_set_title(t('History for %title', array('%title' => entity_label($entity_type, $entity))), PASS_THROUGH);
 
   $status_options = cps_changeset_get_states();
   $changesets = cps_revision_list($entity);
