@@ -362,15 +362,10 @@ function cps_changeset_move_form_submit($form, &$form_state) {
     // Ensure any operations performance in hook_cps_move_changeset() are
     // performed with the correct changeset, and before the entity has been
     // updated.
-    // @todo: should this pass to/from rather than relying on current changeset.
     cps_override_changeset($changeset_from->changeset_id);
-    module_invoke_all('cps_move_changeset', $changeset_from, $entity_type, $entity, $form_state['values']['type']);
+    module_invoke_all('cps_move_changeset', $changeset_from->changeset_id, $changeset_to, $entity_type, $entity, $form_state['values']['type']);
     list(, $revision_id) = entity_extract_ids($entity_type, $entity);
     if ($form_state['values']['type'] == 'move') {
-      debug($changeset_from->changeset_id);
-      debug($changeset_to);
-      debug($entity_type);
-      debug($revision_id);
       // If it's a move, all we have to do is update the changeset_id in the cps_entity table.
       db_update('cps_entity')
         ->condition('entity_type', $entity_type)
