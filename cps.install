@@ -341,3 +341,10 @@ function cps_update_7101() {
 function cps_update_7102() {
   module_enable(array('drafty_enforce'));
 }
+
+/**
+ * Enable entity_status module.
+ */
+function cps_update_7103() {
+  module_enable(array('entity_status'));
+}
