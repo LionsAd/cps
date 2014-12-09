@@ -417,39 +417,36 @@ function cps_entity_presave($entity, $entity_type) {
  * Implements hook_entity_insert().
  */
 function cps_entity_insert($entity, $entity_type) {
- // When an new entity is inserted, we actually want two revisions to be saved.
- //  - An unpublished revision in the 'published' changeset, since CPS treats
- //    any entity that's never been published as 'unpublished'.
- //  - A draft revision in the current changeset with the published flag set to
- //    the same as on the node form.
   $changeset = cps_get_current_changeset();
-  if (!$changeset) {
+  if (!$changeset || !cps_is_supported($entity_type)) {
     return;
   }
+  // When an new entity is inserted, we actually want two revisions to be saved.
+  //  - An unpublished revision in the 'published' changeset, since CPS treats
+  //    any entity that's never been published as 'unpublished'.
+  //  - A draft revision in the current changeset with the published flag set to
+  //    the same as on the node form.
 
+  list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
+  db_insert('cps_entity')
+    ->fields(array(
+      'entity_type' => $entity_type,
+      'entity_id' => $entity_id,
+      'changeset_id' => $changeset,
+      'revision_id' => $revision_id,
+   ))->execute();
+  // Operate on a clone to avoid changing the entity prior to subsequent
+  // hook_entity_insert() implementations.
+  $live_revision = clone $entity;
 
-  if (cps_is_supported($entity_type)) {
-    list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
-    db_insert('cps_entity')
-      ->fields(array(
-        'entity_type' => $entity_type,
-        'entity_id' => $entity_id,
-        'changeset_id' => $changeset,
-        'revision_id' => $revision_id,
-     ))->execute();
-    // Operate on a clone to avoid changing the entity prior to subsequent
-    // hook_entity_insert() implementations.
-    $live_revision = clone $entity;
+  // The entity is no longer new.
+  unset($live_revision->is_new);
 
-    // The entity is no longer new.
-    unset($live_revision->is_new);
+  entity_status_set($entity_type, $live_revision, ENTITY_UNPUBLISHED);
 
-    entity_status_set($entity_type, $live_revision, ENTITY_UNPUBLISHED);
-
-    $live_revision->cps_initial_unpublished = TRUE;
-    module_invoke_all('cps_live_revision', $entity_type, $live_revision);
-    entity_save($entity_type, $live_revision);
-  }
+  $live_revision->cps_initial_unpublished = TRUE;
+  module_invoke_all('cps_live_revision', $entity_type, $live_revision);
+  entity_save($entity_type, $live_revision);
 }
 
 /**
@@ -458,15 +455,12 @@ function cps_entity_insert($entity, $entity_type) {
 function cps_entity_update($entity, $entity_type) {
   $changeset = cps_get_current_changeset();
   // If we are not on a change set, do nothing.
-  if (!$changeset) {
+  if (!$changeset || !cps_is_supported($entity_type)) {
     return;
   }
 
-  // If this isn't a draft revision, do nothing.
-  if (!drafty()->isDraftRevision($entity) && empty($entity->cps_initial_unpublished)) {
-    return;
-  }
-
+  // Check for the flag set in hook_entity_insert() and assign this revision to
+  // the 'initial' changeset if so.
   if (!empty($entity->cps_initial_unpublished)) {
     $changeset = 'initial';
   }
