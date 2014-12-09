@@ -465,7 +465,7 @@ function cps_entity_update($entity, $entity_type) {
   // If this isn't a draft revision, do nothing.
   // @todo: might actually want to update the 'published' revision here
   // instead of nothing.
-  if (drafty()->isDraftRevision($entity) && empty($entity->cps_initial_unpublished)) {
+  if (!drafty()->isDraftRevision($entity) && empty($entity->cps_initial_unpublished)) {
     return;
   }
 
