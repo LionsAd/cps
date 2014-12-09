@@ -459,10 +459,16 @@ function cps_entity_update($entity, $entity_type) {
     return;
   }
 
-  // Check for the flag set in hook_entity_insert() and assign this revision to
-  // the 'initial' changeset if so.
+  // @see cps_entity_insert().
   if (!empty($entity->cps_initial_unpublished)) {
     $changeset = 'initial';
+  }
+
+  // Only the 'initial' revision and draft revisions should be tracked in
+  // changesets. Everything else is in the 'published' changeset which is
+  // untracked.
+  if ($changeset !== 'initial' && !drafty()->isDraftRevision($entity)) {
+    return;
   }
 
   list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
