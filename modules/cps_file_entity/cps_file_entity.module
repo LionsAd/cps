@@ -5,15 +5,6 @@
  */
 
 /**
- * Implements hook_entity_info_alter().
- */
-function cps_file_entity_entity_info_alter(&$info) {
-  $info['file']['entity keys']['status'] = 'published';
-  $info['file']['entity status']['published'] =  FILE_NOT_PUBLISHED;
-  $info['file']['entity status']['unpublished'] = FILE_PUBLISHED;
-}
-
-/**
  * Implements hook_file_entity_access().
  */
 function cps_file_entity_file_entity_access($op, $file, $account) {
