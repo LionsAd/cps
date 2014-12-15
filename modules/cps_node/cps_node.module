@@ -66,6 +66,11 @@ function cps_node_node_access($node, $op, $account) {
 function cps_node_form_node_form_alter(&$form, &$form_state, &$form_id) {
   $form['revision_information']['#access'] = FALSE;
   $form['actions']['submit']['#submit'][] = 'cps_node_node_form_submit';
+
+  $warning = cps_changeset_edit_warning($form_state['node']);
+  if ($warning) {
+    drupal_set_message($warning, 'warning');
+  }
 }
 
 /**
