@@ -1555,18 +1555,11 @@ function cps_diff($entity_type, $old, $new, $state = 'raw') {
   // live revision.
 
   $is_new = FALSE;
-  if (property_exists($old, 'log')) {
-    if ($old->log == 'Initial live revision') {
-      $is_new = TRUE;
-    }
-  }
-  elseif ($old->timestamp == $old->created) {
-    // If it doesn't support the log property, as files do not,
-    // it is a bit tougher to determine if it's newly created. But
-    // it can be done.
-    if (entity_status_supported($entity_type) && entity_status_get($entity_type, $entity)) {
-      $is_new = TRUE;
-    }
+  list($id, $vid) = entity_extract_ids($entity_type, $old);
+  $changeset_id = db_query('SELECT changeset_id FROM {cps_entity} WHERE entity_type = :type AND revision_id = :vid', array(':type' => $entity_type, ':vid' => $vid))->fetchField();
+
+  if ($changeset_id == 'initial') {
+    $is_new = TRUE;
   }
 
   if (!$is_new) {
