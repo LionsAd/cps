@@ -7,5 +7,5 @@
 /**
  * Modify the live 'initial' revision prior to saving.
  */
-function hook_cps_live_revision($entity_type, $entity) {
+function hook_cps_live_revision_create($entity_type, $entity) {
 }
