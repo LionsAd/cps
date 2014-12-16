@@ -339,12 +339,16 @@ function cps_update_7101() {
  * Enable drafty module.
  */
 function cps_update_7102() {
-  module_enable(array('drafty_enforce'));
+  if (!module_enable(array('drafty_enforce'))) {
+    throw new Exception('Drafty module must be available to update to this version of CPS.');
+  }
 }
 
 /**
  * Enable entity_status module.
  */
 function cps_update_7103() {
-  module_enable(array('entity_status'));
+  if (!module_enable(array('entity_status'))) {
+    throw new Exception('Entity status module must be available to update to this version of CPS.');
+  }
 }
