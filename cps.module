@@ -1518,6 +1518,18 @@ function cps_changeset_edit_warning($entity) {
 }
 
 /**
+ * Determine whether an entity is in any published changeset.
+ */
+function cps_entity_in_published_changeset($entity_type, $entity) {
+  list($id) = entity_extract_ids($entity_type, $entity);
+  // Treat a changeset as published if the status is 'live' or 'archived'.
+  $result = db_query('SELECT 1 FROM {cps_entity} ce INNER JOIN {cps_changeset} cc ON ce.changeset_id = cc.changeset_id AND cc.status IN (:published) WHERE ce.entity_type = :type AND ce.entity_id = :id', array(':published' => array('archived', 'published'), ':type' => $entity_type, ':id' => $id))->fetchField();
+  debug($result);
+  return $result;
+}
+
+
+/**
  * Creates an array of rows which represent the difference between nodes.
  *
  * This function relies on the diff module. It is largely copied from
@@ -1554,13 +1566,7 @@ function cps_diff($entity_type, $old, $new, $state = 'raw') {
   // Some special handling if the old version is the special unpublished
   // live revision.
 
-  $is_new = FALSE;
-  list($id, $vid) = entity_extract_ids($entity_type, $old);
-  $changeset_id = db_query('SELECT changeset_id FROM {cps_entity} WHERE entity_type = :type AND revision_id = :vid', array(':type' => $entity_type, ':vid' => $vid))->fetchField();
-
-  if ($changeset_id == 'initial') {
-    $is_new = TRUE;
-  }
+  $is_new = !cps_entity_in_published_changeset($entity_type, $old);
 
   if (!$is_new) {
     $context = array(
@@ -1730,7 +1736,7 @@ function cps_render_changed_entity($entity_type, $change, $entity) {
     $original = entity_load_single($entity_type, $entity_id);
     cps_override_changeset(NULL);
 
-    if ($original && (!property_exists($original, 'log') || $original->log != 'Initial live revision')) {
+    if (cps_entity_in_published_changeset($entity_type, $original)) {
       $diff = cps_render_diff($entity_type, $original, $change);
       if (!empty($diff['#changes'])) {
         $title = format_plural($diff['#changes'], '1 change', '@count changes');
