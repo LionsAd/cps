@@ -445,7 +445,7 @@ function cps_entity_insert($entity, $entity_type) {
   entity_status_set($entity_type, $live_revision, ENTITY_UNPUBLISHED);
 
   $live_revision->cps_initial_unpublished = TRUE;
-  module_invoke_all('cps_live_revision', $entity_type, $live_revision);
+  module_invoke_all('cps_live_revision_create', $entity_type, $live_revision);
   entity_save($entity_type, $live_revision);
 }
 
