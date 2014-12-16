@@ -1485,7 +1485,7 @@ function cps_changeset_get_states() {
 function cps_show_revisions_page($entity_type, $entity) {
   // @todo: no real need for a wrapper here.
   if (cps_is_supported($entity_type)) {
-    cps_revisions_page($entity, $entity_type);
+    return cps_revisions_page($entity, $entity_type);
   }
 
   return array();
@@ -1524,7 +1524,7 @@ function cps_entity_in_published_changeset($entity_type, $entity) {
   list($id) = entity_extract_ids($entity_type, $entity);
   // Treat a changeset as published if the status is 'live' or 'archived'.
   $result = db_query('SELECT 1 FROM {cps_entity} ce INNER JOIN {cps_changeset} cc ON ce.changeset_id = cc.changeset_id AND cc.status IN (:published) WHERE ce.entity_type = :type AND ce.entity_id = :id', array(':published' => array('archived', 'published'), ':type' => $entity_type, ':id' => $id))->fetchField();
-  debug($result);
+
   return $result;
 }
 
@@ -2143,7 +2143,7 @@ function cps_changeset_get_operations(CPSChangeset $changeset) {
  * @return CPSChangeset[]
  *   An array of changesets, keyed by the revision ID they apply to..
  */
-function entity_revision_list($entity, $entity_type) {
+function cps_revision_list($entity, $entity_type) {
   list($entity_id, $revision_id, $bundle) = entity_extract_ids($entity_type, $entity);
   $live_revision_id = isset($entity->published_revision_id) ? $entity->published_revision_id : $revision_id;
 
@@ -2203,7 +2203,7 @@ function cps_revisions_page($entity, $entity_type) {
   drupal_set_title(t('History for %title', array('%title' => entity_label($entity_type, $entity))), PASS_THROUGH);
 
   $status_options = cps_changeset_get_states();
-  $changesets = cps_revision_list($entity);
+  $changesets = cps_revision_list($entity, $entity_type);
 
   $rows = array();
   // System created entities might not have a live revision. If not,
