@@ -1,7 +1,8 @@
 <?php
 
 /**
- * @file Hook documentation for CPS.
+ * @file
+ * Hook documentation for CPS.
  */
 
 /**
