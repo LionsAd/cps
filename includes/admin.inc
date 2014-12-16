@@ -389,3 +389,139 @@ function cps_changeset_move_form_submit($form, &$form_state) {
     $form_state['redirect'] = $changeset_from->uri();
   }
 }
+
+/**
+ * Return a list of revisions with CPS information for the entity.
+ *
+ * @param object $entity
+ *   The entity to find changesets for.
+ * @return CPSChangeset[]
+ *   An array of changesets, keyed by the revision ID they apply to..
+ */
+function cps_revision_list($entity, $entity_type) {
+  list($entity_id, $revision_id, $bundle) = entity_extract_ids($entity_type, $entity);
+  $live_revision_id = isset($entity->published_revision_id) ? $entity->published_revision_id : $revision_id;
+
+  $entity_info = entity_get_info($entity_type);
+  $revision_table = $entity_info['revision table'];
+  $id_key = $entity_info['entity keys']['id'];
+  $revision_key = $entity_info['entity keys']['revision'];
+
+  $query = db_select('cps_entity', 'c')->extend('PagerDefault');
+  $query->limit(25);
+  $query->join($revision_table, 'r', "c.revision_id = r.$revision_key");
+  $query->join('cps_changeset', 'cc', "cc.changeset_id = c.changeset_id");
+  $query->fields('c', array('changeset_id', 'revision_id'))
+    ->condition('c.entity_type', $entity_type)
+    ->condition("r.$id_key", $entity_id)
+    // We also only include where c.published IS NULL, because if it's set
+    // that means the entry was added when a changeset was published to
+    // preserve the site state at the time it was published and is not relevant
+    // here.
+    ->isNull('c.published')
+    // the "initial" revision is a special one created to ensure that content
+    // isn't accidentally visible on the site until published, and is not
+    // relevant to show.
+    ->condition('c.changeset_id', 'initial', '<>')
+    // Live revision is always first.
+    ->orderBy('CASE WHEN c.revision_id = ' . $live_revision_id . ' THEN 0 ELSE 1 END')
+    // Then unpublished revisions.
+    ->orderBy('CASE WHEN cc.published = 0 THEN 0 ELSE 1 END')
+    // Then order by publish date.
+    ->orderBy('cc.published', 'DESC')
+    // And finally as a backup, by revision id.
+    ->orderBy("r.$revision_key", 'DESC');
+
+  $result = $query->execute();
+
+  $keys = array();
+  foreach ($result as $revision) {
+    $keys[$revision->changeset_id] = $revision->revision_id;
+  }
+
+  $changesets = array();
+  foreach (cps_changeset_load_multiple(array_keys($keys)) as $changeset_id => $changeset) {
+    $changesets[$keys[$changeset_id]] = $changeset;
+  }
+  return $changesets;
+}
+
+/**
+ * Page callback to show revisions for an entity.
+ */
+function cps_revisions_page($entity, $entity_type) {
+  list($entity_id, $revision_id, $bundle) = entity_extract_ids($entity_type, $entity);
+
+  $live_revision_id = isset($entity->published_revision_id) ? $entity->published_revision_id : $revision_id;
+
+  $uri = entity_uri($entity_type, $entity);
+  drupal_set_title(t('History for %title', array('%title' => entity_label($entity_type, $entity))), PASS_THROUGH);
+
+  $status_options = cps_changeset_get_states();
+  $changesets = cps_revision_list($entity, $entity_type);
+
+  $rows = array();
+  // System created entities might not have a live revision. If not,
+  // create a fake entry to inform the user.
+  if (empty($changesets)) {
+    $rows[] = array(
+      t('System created'),
+      t('System created'),
+      '<b>' . t('Live') . '</b>',
+      ''
+    );
+  }
+
+  foreach ($changesets as $changeset_revision_id => $changeset) {
+    $row = array();
+    $changeset_uri = $changeset->uri();
+    $row[] = l($changeset->label(), $changeset_uri['path']);
+    $row[] = format_username($changeset);
+
+    if ($changeset_revision_id == $live_revision_id) {
+      $status = '<b>' . t('Live') . '</b>';
+    }
+    else {
+      $status = $status_options[$changeset->status];
+    }
+
+    if (!empty($changeset->published)) {
+      $status .= '<br/>' . t('Published on @date', array('@date' => format_date($changeset->published)));
+    }
+
+    $row[] = $status;
+
+    $operations = array(
+      '#type' => 'container',
+      '#attributes' => array('class' => 'cps-changeset-operations'),
+      'site' => array(
+        '#theme' => 'link',
+        '#text' => t('view'),
+        '#path' => $uri['path'],
+        '#options' => array(
+          'query' => array('changeset_id' => $changeset->changeset_id),
+          'html' => TRUE,
+          'attributes' => array('class' => array('cps-changeset-operation'))
+        ),
+        '#access' => user_access('preview changesets') || user_access('view changesets') || user_access('administer changesets'),
+      ),
+    );
+
+    $row[] = drupal_render($operations);
+
+    $rows[] = $row;
+  }
+
+  $header = array(t('Site version'), t('Author'), t('Status'), t('Operations'));
+
+  $build['entity_revisions_table'] = array(
+    '#theme' => 'table',
+    '#rows' => $rows,
+    '#header' => $header,
+  );
+
+  // Attach the pager theme.
+  $build['entity_revisions_table_pager'] = array('#theme' => 'pager');
+
+  return $build;
+}
