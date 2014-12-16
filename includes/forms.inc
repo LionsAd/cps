@@ -186,8 +186,7 @@ function cps_changeset_publish_changeset_form_submit($form, &$form_state) {
     $batch['operations'][] = array('cps_changeset_publish_batch_variables', array());
   }
 
-  $plugins = cps_get_entity_plugins();
-  foreach ($plugins as $entity_type => $plugin) {
+  foreach (cps_get_supported() as $entity_type) {
     // For every entity type we support, add another operation for that entity type.
     $batch['operations'][] = array('cps_changeset_publish_batch_update', array($entity_type));
   }
@@ -253,9 +252,8 @@ function cps_changeset_publish_batch_entities($entity_ids, $changeset, &$context
 
     $context['finished'] = FALSE;
     list($entity_type, $entity_id) = $entity_ids[$index];
-    $handler = cps_entity_plugin_get_handler($entity_type);
-    if ($handler) {
-      $handler->makeChangesetRevisionPublished($entity_id, $changeset->changeset_id);
+    if (cps_is_supported($entity_type)) {
+      cps_make_revision_published($entity_type, $entity_id, $changeset->changeset_id);
     }
     $context['sandbox']['progress']++;
     $context['message'] = t('Publishing item @index of @count', array('@index' => $index, '@count' => $count));
@@ -308,9 +306,6 @@ function cps_changeset_publish_batch_update($entity_type, &$context) {
 
   if (!empty($results[$entity_type])) {
     $count = count($results[$entity_type]);
-    $handler = cps_entity_plugin_get_handler($entity_type);
-    $handler->cps_revision_reset = TRUE;
-
     // Load which entities have revisions.
     $result = db_query('SELECT * FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id IN (:entity_id) AND changeset_id = :changeset',
       array(
@@ -339,7 +334,6 @@ function cps_changeset_publish_batch_update($entity_type, &$context) {
           ->execute();
       }
     }
-    $handler->cps_revision_reset = FALSE;
   }
 
   if ($count < $limit) {
@@ -433,8 +427,7 @@ function cps_changeset_unpublish_changeset_form_submit($form, &$form_state) {
     'file' => drupal_get_path('module', 'cps') . '/includes/forms.inc',
   );
 
-  $plugins = cps_get_entity_plugins();
-  foreach ($plugins as $entity_type => $plugin) {
+  foreach (cps_get_supported() as $entity_type) {
     // For every entity type we support, add another operation for that entity type.
     $batch['operations'][] = array('cps_changeset_unpublish_batch_entity', array($entity_type));
   }
@@ -523,8 +516,6 @@ function cps_changeset_unpublish_batch_entity($entity_type, &$context) {
 
   if (!empty($results[$entity_type])) {
     $count = count($results[$entity_type]);
-    $handler = cps_entity_plugin_get_handler($entity_type);
-    $handler->cps_revision_reset = TRUE;
 
     // Load which entities have revisions.
     $result = db_query('SELECT * FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id IN (:entity_id) AND changeset_id = :changeset',
@@ -541,12 +532,11 @@ function cps_changeset_unpublish_batch_entity($entity_type, &$context) {
     // Loading entities also has to happen in the published changeset.
     // For each entity whose current revision_id is different from the previous, republish the previous.
     foreach (entity_load($entity_type, array_keys($results[$entity_type])) as $entity) {
-      // Publishing revisions has to happen in the changeset of the revision
-      // being published.
+      // Publishing revisions has to happen in the published revision.
       list($entity_id, $revision_id,) = entity_extract_ids($entity_type, $entity);
       if (isset($changesets[$entity_id]->revision_id) && $revision_id != $changesets[$entity_id]->revision_id) {
-        cps_override_changeset($context['results']['previous']->changeset_id);
-        $handler->makeChangesetRevisionPublished($entity_id, $context['results']['previous']->changeset_id);
+        cps_override_changeset(CPS_PUBLISHED_CHANGESET);
+        cps_make_revision_published($entity_type, $entity_id, $context['results']['previous']->changeset_id);
       }
       else {
         // Check to see if there wasn't a revision of the entity in the previous revision
@@ -554,8 +544,7 @@ function cps_changeset_unpublish_batch_entity($entity_type, &$context) {
         // revision created for it that exists in no changeset. We'll have to make that
         // revision live again.
         if (!isset($changesets[$entity_id])) {
-          cps_override_changeset('initial');
-          $handler->makeChangesetRevisionPublished($entity_id, 'initial');
+          cps_make_revision_published($entity_type, $entity_id, 'initial');
         }
 
         // If the reverted revision is the same as the live revision, remove the record so
@@ -569,7 +558,6 @@ function cps_changeset_unpublish_batch_entity($entity_type, &$context) {
       }
       cps_override_changeset(CPS_PUBLISHED_CHANGESET);
     }
-    $handler->cps_revision_reset = FALSE;
   }
 
   if ($count < $limit) {

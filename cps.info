@@ -3,7 +3,8 @@ description = Allows the creation of site versions and viewing the system in the
 core = 7.x
 
 dependencies[] = ctools
-dependencies[] = entity
+dependencies[] = drafty_enforce
+dependencies[] = entity_status
 dependencies[] = iib
 dependencies[] = views
 

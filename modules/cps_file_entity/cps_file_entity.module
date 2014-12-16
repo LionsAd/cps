@@ -16,15 +16,6 @@ function cps_file_entity_file_entity_access($op, $file, $account) {
 }
 
 /**
- * Implements hook_ctools_plugin_directory().
- */
-function cps_file_entity_ctools_plugin_directory($module, $plugin) {
-  if ($module == 'cps') {
-    return 'plugins/' . $plugin;
-  }
-}
-
-/**
  * Implements hook_module_implements_alter().
  */
 function cps_file_entity_module_implements_alter(&$implementations, $hook) {

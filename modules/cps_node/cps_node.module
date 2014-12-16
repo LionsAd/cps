@@ -6,19 +6,15 @@
  */
 
 // -----------------------------------------------------------------------
-// Contrib Hooks
+// Drupal Core Hooks
+//
 
 /**
- * Implements hook_ctools_plugin_directory().
+ * Implements hook_entity_info_alter().
  */
-function cps_node_ctools_plugin_directory($module, $plugin) {
-  if ($module == 'cps') {
-    return 'plugins/' . $plugin;
-  }
+function cps_node_entity_info_alter(&$info) {
+  $info['node']['cps'] = TRUE;
 }
-
-// -----------------------------------------------------------------------
-// Drupal Core Hooks
 
 /**
  * Implements hook_menu_alter().
@@ -66,6 +62,11 @@ function cps_node_node_access($node, $op, $account) {
 function cps_node_form_node_form_alter(&$form, &$form_state, &$form_id) {
   $form['revision_information']['#access'] = FALSE;
   $form['actions']['submit']['#submit'][] = 'cps_node_node_form_submit';
+
+  $warning = cps_changeset_edit_warning($form_state['node']);
+  if ($warning) {
+    drupal_set_message($warning, 'warning');
+  }
 }
 
 /**
@@ -84,4 +85,42 @@ function cps_node_admin_paths() {
   return array(
     'node/*/history' => TRUE,
   );
+}
+
+/**
+ *  Implements hook_module_implements_alter().
+ */
+function cps_node_module_implements_alter(&$implementations, $hook) {
+  if (isset($implementations['cps_node']) && ($hook == 'query_alter')) {
+    // Move CPS's query alter after entity reference's so we can remove the
+    // checks for published status.
+    $group = $implementations['cps_node'];
+    unset($implementations['cps_node']);
+    $implementations['cps_node'] = $group;
+  }
+}
+
+/**
+ *  Implements hook_query_TAG_alter().
+ */
+function cps_node_query_entityreference_alter(QueryAlterableInterface $query) {
+  // If the user can view changesets, then they need to be able to reference
+  // unpublished nodes when in a changeset context.
+  $tables = $query->getTables();
+  // If cps_entity is not added there is very little we can do at this point.
+  if (cps_get_current_changeset(TRUE) != CPS_PUBLISHED_CHANGESET && isset($tables['cps_entity'])) {
+    $conditions = &$query->conditions();
+    foreach ($conditions as $index => $condition) {
+      // EntityReference_SelectionHandler_Generic_node::entityFieldQueryAlter()
+      // adds this condition.
+      if (is_array($condition) && $condition['field'] == 'node.status' && $condition['operator'] == '=') {
+        unset($conditions[$index]);
+        if (!isset($tables['node_revision'])) {
+          $query->join('node_revision', 'node_revision', 'node_revision.vid = COALESCE(cps_entity.revision_id, node.vid)');
+        }
+        $query->condition('node_revision.status', $condition['value']);
+        break;
+      }
+    }
+  }
 }
