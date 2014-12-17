@@ -1347,17 +1347,21 @@ function cps_render_diff($entity_type, $old, $new, $state = 'raw') {
     '#changes' => 0,
   );
 
-
-  foreach (array_keys($rows) as $key) {
+  foreach ($rows as $key => $row) {
     if (strpos($key, 'diff-row-') === 0) {
-      $build['#changes']++;
+      // diff sometimes adds empty rows which are keyed like a change, but are
+      // not. Discount these.
+      $empty_row = FALSE;
+      if (is_array($row)) {
+        $first_element = reset($row);
+        if (is_string($first_element) && $first_element == '&nbsp;') {
+          $empty_row = TRUE;
+        }
+      }
+      if (!$empty_row) {
+        $build['#changes']++;
+      }
     }
-  }
-
-  // diff puts a blank line at the end which is keyed like a change, though
-  // it is not. Discount this.
-  if ($build['#changes'] > 1) {
-    $build['#changes']--;
   }
 
   return $build;
