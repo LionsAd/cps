@@ -412,7 +412,12 @@ function cps_get_unpublished_changesets() {
  * Implements hook_entity_presave().
  */
 function cps_entity_presave($entity, $entity_type) {
+  $current_changeset = cps_get_current_changeset();
+  if (!empty($entity->cps_initial_unpublished)) {
+    cps_override_changeset('initial');
+  }
   cps_set_revision_log($entity);
+  cps_override_changeset($current_changeset);
 }
 
 /**
@@ -601,7 +606,7 @@ function cps_set_revision_log($entity) {
   else {
     $name = 'Published';
   }
-  $entity->log = t('Revision for site version %changeset', array('%changeset' => $name));
+  $entity->log = t('Revision for site version @changeset', array('@changeset' => $name));
 }
 
 /**
