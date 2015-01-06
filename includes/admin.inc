@@ -457,7 +457,7 @@ function cps_revisions_page($entity, $entity_type) {
   $uri = entity_uri($entity_type, $entity);
   drupal_set_title(t('History for %title', array('%title' => entity_label($entity_type, $entity))), PASS_THROUGH);
 
-  $status_options = cps_changeset_get_states();
+  $status_options = cps_changeset_get_state_labels();
   $changesets = cps_revision_list($entity, $entity_type);
 
   $rows = array();

@@ -143,26 +143,12 @@ function cps_views_default_views() {
     5 => 0,
     3 => 0,
   );
-  /* Filter criterion: Changeset: Status */
-  $handler->display->display_options['filters']['status']['id'] = 'status';
-  $handler->display->display_options['filters']['status']['table'] = 'cps_changeset';
-  $handler->display->display_options['filters']['status']['field'] = 'status';
-  $handler->display->display_options['filters']['status']['operator'] = 'not in';
-  $handler->display->display_options['filters']['status']['value'] = array(
-    'archived' => 'archived',
-  );
-  $handler->display->display_options['filters']['status']['group'] = 1;
-  $handler->display->display_options['filters']['status']['expose']['operator_id'] = 'status_op';
-  $handler->display->display_options['filters']['status']['expose']['label'] = 'Status';
-  $handler->display->display_options['filters']['status']['expose']['operator'] = 'status_op';
-  $handler->display->display_options['filters']['status']['expose']['identifier'] = 'status';
-  $handler->display->display_options['filters']['status']['expose']['required'] = TRUE;
-  $handler->display->display_options['filters']['status']['expose']['remember_roles'] = array(
-    2 => '2',
-    1 => 0,
-    4 => 0,
-    5 => 0,
-    3 => 0,
+  /* Filter criterion: Site version: Status type */
+  $handler->display->display_options['filters']['status_type']['id'] = 'status_type';
+  $handler->display->display_options['filters']['status_type']['table'] = 'cps_changeset';
+  $handler->display->display_options['filters']['status_type']['field'] = 'status_type';
+  $handler->display->display_options['filters']['status_type']['value'] = array(
+    'open' => 'open',
   );
   /* Filter criterion: Changeset: Changeset ID */
   $handler->display->display_options['filters']['changeset_id']['id'] = 'changeset_id';
@@ -334,13 +320,12 @@ function cps_views_default_views() {
   $handler->display->display_options['fields']['name_1']['alter']['alter_text'] = TRUE;
   $handler->display->display_options['fields']['name_1']['element_label_colon'] = FALSE;
   $handler->display->display_options['fields']['name_1']['link_to_user'] = FALSE;
-  /* Filter criterion: Changeset: Status */
-  $handler->display->display_options['filters']['status']['id'] = 'status';
-  $handler->display->display_options['filters']['status']['table'] = 'cps_changeset';
-  $handler->display->display_options['filters']['status']['field'] = 'status';
-  $handler->display->display_options['filters']['status']['operator'] = 'not in';
-  $handler->display->display_options['filters']['status']['value'] = array(
-    'archived' => 'archived',
+  /* Filter criterion: Site version: Status type */
+  $handler->display->display_options['filters']['status_type']['id'] = 'status_type';
+  $handler->display->display_options['filters']['status_type']['table'] = 'cps_changeset';
+  $handler->display->display_options['filters']['status_type']['field'] = 'status_type';
+  $handler->display->display_options['filters']['status_type']['value'] = array(
+    'open' => 'open',
   );
   /* Filter criterion: User: Current */
   $handler->display->display_options['filters']['uid_current']['id'] = 'uid_current';
@@ -718,24 +703,12 @@ function cps_views_default_views() {
     5 => 0,
     3 => 0,
   );
-  /* Filter criterion: Changeset: Status */
-  $handler->display->display_options['filters']['status']['id'] = 'status';
-  $handler->display->display_options['filters']['status']['table'] = 'cps_changeset';
-  $handler->display->display_options['filters']['status']['field'] = 'status';
-  $handler->display->display_options['filters']['status']['value'] = array(
-    'archived' => 'archived',
-  );
-  $handler->display->display_options['filters']['status']['expose']['operator_id'] = 'status_op';
-  $handler->display->display_options['filters']['status']['expose']['label'] = 'Status';
-  $handler->display->display_options['filters']['status']['expose']['operator'] = 'status_op';
-  $handler->display->display_options['filters']['status']['expose']['identifier'] = 'status';
-  $handler->display->display_options['filters']['status']['expose']['required'] = TRUE;
-  $handler->display->display_options['filters']['status']['expose']['remember_roles'] = array(
-    2 => '2',
-    1 => 0,
-    4 => 0,
-    5 => 0,
-    3 => 0,
+  /* Filter criterion: Site version: Status type */
+  $handler->display->display_options['filters']['status_type']['id'] = 'status_type';
+  $handler->display->display_options['filters']['status_type']['table'] = 'cps_changeset';
+  $handler->display->display_options['filters']['status_type']['field'] = 'status_type';
+  $handler->display->display_options['filters']['status_type']['value'] = array(
+    'closed' => 'closed',
   );
   /* Filter criterion: User: Current */
   $handler->display->display_options['filters']['uid_current']['id'] = 'uid_current';

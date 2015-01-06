@@ -120,7 +120,11 @@ function cps_workflow_simple_mail($key, &$message, $params) {
  */
 function cps_workflow_simple_cps_changeset_states_alter(&$states) {
   // Add a state for 'submitted for review.'
-  $states['review'] = t('Pending review');
+  $states['review'] = array(
+    'label' => t('Pending review'),
+    'weight' => 0,
+    'type' => 'open',
+  );
 }
 
 /**

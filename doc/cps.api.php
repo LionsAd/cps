@@ -23,16 +23,37 @@ function hook_cps_can_edit_entities_alter(&$access, $context) {
 }
 
 /**
+ * Alter the list of workflow state types.
+ *
+ * All states have a type, so that they can be easily used in Views
+ * without having to specify the exact state.
+ *
+ * By default CPS only has Open and Closed
+ *
+ * @param string[] $types
+ *   An array of state types keyed by state type ID.
+ */
+function hook_cps_changeset_state_types_alter(&$types) {
+  // Add a state type for changesets that aren't closed but aren't
+  // going anywhere, either.
+  $states['parked'] = t('Parked');
+}
+
+/**
  * Alter the list of workflow states.
  *
  * By default CPS only has Unpublished and Archived.
  *
- * @param string[] $states
+ * @param array[] $states
  *   An array of states keyed by state ID.
  */
 function hook_cps_changeset_states_alter(&$states) {
   // Add a state for 'submitted for review.'
-  $states['review'] = t('Pending review');
+  $states['review'] = array(
+    'label' => t('Pending review'),
+    'weight' => 0,
+    'type' => 'open',
+  );
 }
 
 /**

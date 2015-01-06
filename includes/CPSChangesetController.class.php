@@ -203,7 +203,7 @@ class CPSChangesetController extends EntityAPIController {
       'label' => t("Status"),
       'type' => 'text',
       'description' => t("The current state of the changeset."),
-      'options list' => 'cps_changeset_get_states',
+      'options list' => 'cps_changeset_get_state_labels',
       'getter callback' => 'entity_property_verbatim_get',
       'setter callback' => 'entity_property_verbatim_set',
       'auto creation' => TRUE,
@@ -272,7 +272,7 @@ class CPSChangesetController extends EntityAPIController {
     );
 
     // Display the changeset status.
-    $options = cps_changeset_get_states();
+    $options = cps_changeset_get_state_labels();
     $build['status'] = array(
       '#type' => 'item',
       '#title' => t('Status'),
@@ -334,7 +334,7 @@ class CPSChangesetController extends EntityAPIController {
 
     // In the full view mode, display a history at the bottom.
     if ($view_mode == 'full') {
-      $statuses = cps_changeset_get_states();
+      $statuses = cps_changeset_get_state_labels();
       $account = user_load($entity->uid);
       $items = array(array(
         t('Created'),

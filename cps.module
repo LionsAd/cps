@@ -412,12 +412,26 @@ function cps_get_unpublished_changesets() {
  * Implements hook_entity_presave().
  */
 function cps_entity_presave($entity, $entity_type) {
-  $current_changeset = cps_get_current_changeset();
-  if (!empty($entity->cps_initial_unpublished)) {
-    cps_override_changeset('initial');
+  if (cps_is_supported($entity_type)) {
+    $current_changeset = cps_get_current_changeset();
+    $initial = FALSE;
+    if (!empty($entity->cps_initial_unpublished)) {
+      $initial = TRUE;
+      cps_override_changeset('initial');
+    }
+    else if ($current_changeset) {
+      $entity->is_draft_revision = TRUE;
+    }
+
+    cps_set_revision_log($entity);
+
+    if ($initial) {
+      // Ordinarily we should use NULL to reset the override, but
+      // we may have already been overridden when we got here so just
+      // put back what we found instead.
+      cps_override_changeset($current_changeset);
+    }
   }
-  cps_set_revision_log($entity);
-  cps_override_changeset($current_changeset);
 }
 
 /**
@@ -870,7 +884,7 @@ function cps_can_delete_entity($entity_type, $entity) {
   $id_field = $entity_info['entity keys']['id'];
   $revision_field = $entity_info['entity keys']['revision'];
 
-  $result = db_query("SELECT DISTINCT base.$revision_field FROM {" . $revision_table . "} base LEFT JOIN {cps_entity} c ON base.$id_field = c.entity_id AND base.$revision_field = c.revision_id AND c.entity_type = '$entity_type' LEFT JOIN {cps_changeset} cs ON cs.changeset_id = c.changeset_id WHERE base.$id_field = :entity_id AND cs.published <> 0", array(':entity_id' => $entity_id))->fetchCol();
+  $result = db_query("SELECT DISTINCT base.$revision_field FROM " . "{" . $revision_table . "} base LEFT JOIN {cps_entity} c ON base.$id_field = c.entity_id AND base.$revision_field = c.revision_id AND c.entity_type = '$entity_type' LEFT JOIN {cps_changeset} cs ON cs.changeset_id = c.changeset_id WHERE base.$id_field = :entity_id AND cs.published <> 0", array(':entity_id' => $entity_id))->fetchCol();
 
   if (!$result) {
     return TRUE;
@@ -983,19 +997,72 @@ function cps_get_changesets() {
 }
 
 /**
- * Fetch a list of possible states for changesets.
+ * Fetch a list of possible state types for changesets.
  *
  * @return string[]
+ *   An array of state types named keyed by the internal name.
+ */
+function cps_changeset_get_state_types() {
+  $types = drupal_static(__FUNCTION__);
+  if (!isset($types)) {
+    $types = array(
+      'open' => t('Open'),
+      'closed' => t('Closed'),
+    );
+
+    drupal_alter('cps_changeset_state_types', $types);
+  }
+
+
+  return $types;
+}
+
+/**
+ * Fetch a list of possible states for changesets.
+ *
+ * @return array[]
  *   An array of state named keyed by the internal name.
  */
 function cps_changeset_get_states() {
-  $states = array(
-    'unpublished' => t('Unpublished'),
-    'archived' => t('Archived'),
-  );
+  $states = drupal_static(__FUNCTION__);
+  if (!isset($states)) {
+    $states = array(
+      'unpublished' => array(
+        'label' => t('Unpublished'),
+        'weight' => 0,
+        'type' => 'open',
+      ),
+      'archived' => array(
+        'label' => t('Archived'),
+        'weight' => 9,
+        'type' => 'closed',
+      ),
+    );
+    drupal_alter('cps_changeset_states', $states);
 
-  drupal_alter('cps_changeset_states', $states);
+    uasort($states, 'drupal_sort_weight');
+  }
+
   return $states;
+}
+
+/**
+ * Fetch the labels for all changeset states.
+ *
+ * @return string[]
+ */
+function cps_changeset_get_state_labels() {
+  $labels = drupal_static(__FUNCTION__);
+  if (!$labels) {
+    $states = cps_changeset_get_states();
+
+    $labels = array();
+    foreach ($states as $state => $info) {
+      $labels[$state] = $info['label'];
+    }
+  }
+
+  return $labels;
 }
 
 /**
