@@ -58,9 +58,11 @@ function cps_file_entity_form_file_entity_edit_alter(&$form, &$form_state) {
   // the file.
   $form['options']['new_revision']['#value'] = empty($file->changeset[$changeset_id]);
 
-  $warning = cps_changeset_edit_warning($file);
-  if ($warning) {
-    drupal_set_message($warning, 'warning');
+  if (empty($form_state['input'])) {
+    $warning = cps_changeset_edit_warning($file);
+    if ($warning) {
+      drupal_set_message($warning, 'warning');
+    }
   }
 
 }
