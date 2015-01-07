@@ -90,8 +90,6 @@ class cps_handler_relationship_changeset extends views_handler_relationship  {
     $entity_info = entity_get_info($entity_type);
 
     if (!empty($states)) {
-      // Just join the table without all the subselect stuff.
-
       // Add the cps_entity + cps_changeset subselect for the entity.
       // This subselect is required because a LEFT JOIN requires the filter
       // to be part of the join and but since what we're filtering on is
@@ -125,6 +123,7 @@ class cps_handler_relationship_changeset extends views_handler_relationship  {
       $this->cps_alias = $this->query->add_table('cps_entity_select', $this->relationship, $cps_join);
     }
     else {
+      // Just join the table without all the subselect stuff.
       // This just adds the cps_entity table directly as an intermediary.
       $cps_def = array(
         'table' => 'cps_entity',
