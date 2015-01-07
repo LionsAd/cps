@@ -25,7 +25,7 @@ function cps_file_entity_module_implements_alter(&$implementations, $hook) {
 
   // We can't just use the specific form because drupal_alter makes sure that
   // everything stays in the order of the 'main' hook, in this case form_alter.
-  if ($hook == 'form_file_entity_edit_alter' || $hook == 'form_alter') {
+  if (($hook == 'form_file_entity_edit_alter' || $hook == 'form_alter') && isset($implementations['cps_file_entity'])) {
     unset($implementations['cps_file_entity']);
 
     $position = 1;
