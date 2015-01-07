@@ -19,4 +19,22 @@ function cps_views_data_alter(&$data) {
       'handler' => 'cps_handler_filter_status_type',
     )
   );
+
+  $types = cps_get_supported();
+  $info = entity_get_info();
+  foreach ($types as $type) {
+    $entity_info = $info[$type];
+    $table = $entity_info['revision table'];
+
+    $data[$table]['cps_changeset'] = array(
+      'title' => t('CPS Site Version'),
+      'help' => t('Relates the @label entity to the CPS changeset table through the CPS site version.', array('@label' => $entity_info['label'])),
+      'relationship' => array(
+        'handler' => 'cps_handler_relationship_changeset',
+        'label' => t('cps'),
+        'base' => 'cps_changeset',
+        'entity type' => $type,
+      ),
+    );
+  }
 }

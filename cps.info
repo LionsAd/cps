@@ -15,3 +15,4 @@ files[] = includes/CPSChangeset.class.php
 files[] = includes/CPSChangesetController.class.php
 files[] = includes/CPSEntityAPIControllerFriend.class.php
 files[] = plugins/views/cps_handler_filter_status_type.class.php
+files[] = plugins/views/cps_handler_relationship_changeset.class.php
