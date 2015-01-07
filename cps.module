@@ -1463,6 +1463,9 @@ function cps_publish_lock() {
   // This seems like a long time, but some publishing runs can be quite long, and we want
   // to make sure they finish and that a timeout truly represents an aborted publishing job,
   // for example because the user navigated away from the batch job before it completed.
+  // Because this is intended to be used in batch processes (for which the lock needs to be
+  // held for more than one page request, until the batch job is complete) it cannot use the
+  // core lock API. Therefore it uses a variable instead.
   variable_set('cps_publishing_lock', REQUEST_TIME + variable_get('cps_publishing_lock_expire', 60 * 30));
   return TRUE;
 }
