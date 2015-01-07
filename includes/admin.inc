@@ -169,7 +169,7 @@ function cps_changeset_unpublish_page(CPSChangeset $entity) {
 }
 
 /**
- * Page callback to display the publish changeset form.
+ * Page callback to switch to a particular changeset.
  *
  * @param CPSChangeset $entity
  *
