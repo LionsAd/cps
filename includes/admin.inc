@@ -298,37 +298,23 @@ function cps_changeset_move_form($form, &$form_state) {
   $entity = $form_state['entity'];
   $uri = $changeset_from->uri();
 
-  // We use individual radio buttons rather than #type => 'radios'
-  // here so that we can disable 'move' if it isn't available.
   $form['type'] = array(
-    '#type' => 'item',
+    '#type' => 'radios',
     '#title' => t('Would you like to move or copy changes?'),
     '#description' => t('If you copy, the original site version will be untouched. If you move, all changes for this entity will be moved to the current site version. Note: You cannot move changes if the originating site version is not editable by you or has already been published.'),
-  );
-
-  $form['type']['move'] = array(
-    '#name' => 'type',
-    '#type' => 'radio',
-    '#title' => t('Move'),
-    '#return_value' => 'move',
-    '#default_value' => FALSE,
-  );
-
-  $form['type']['copy'] = array(
-    '#name' => 'type',
-    '#type' => 'radio',
-    '#title' => t('Copy'),
-    '#return_value' => 'copy',
-    '#default_value' => FALSE,
+    '#options' => array(
+      'move' => t('Move'),
+      'copy' => t('Copy'),
+    ),
   );
 
   // Disable 'move' if they can't edit the original.
   if (!cps_can_edit_entities('update', $entity_type, $entity, $changeset_from->changeset_id)) {
     $form['type']['move']['#disabled'] = TRUE;
-    $form['type']['copy']['#default_value'] = 'copy';
+    $form['type']['#default_value'] = 'copy';
   }
   else {
-    $form['type']['move']['#default_value'] = 'move';
+    $form['type']['#default_value'] = 'move';
   }
 
   return confirm_form($form,
@@ -338,15 +324,6 @@ function cps_changeset_move_form($form, &$form_state) {
     t('Confirm'),
     t('Cancel')
   );
-}
-
-/**
- * Validate callback for cps_changeset_move_form
- */
-function cps_changeset_move_form_validate($form, &$form_state) {
-  // Becuase we are manually constructing radios, we have to massage the results back to
-  // what we expect.
-  $form_state['values']['type'] = $form_state['values']['move'] ? 'move' : 'copy';
 }
 
 /**
