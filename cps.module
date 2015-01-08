@@ -413,14 +413,22 @@ function cps_get_unpublished_changesets() {
  */
 function cps_entity_presave($entity, $entity_type) {
   if (cps_is_supported($entity_type)) {
-    $current_changeset = cps_get_current_changeset();
     $initial = FALSE;
+    $current_changeset = cps_get_current_changeset();
     if (!empty($entity->cps_initial_unpublished)) {
       $initial = TRUE;
       cps_override_changeset('initial');
     }
     else if ($current_changeset) {
-      $entity->is_draft_revision = TRUE;
+      list($id) = entity_extract_ids($entity_type, $entity);
+      // Force a draft revision to be created when updating entities within a
+      // changeset. However respect the state of $entity->is_draft_revision if
+      // it is already set since drafty uses this internally to re-save the
+      // published version, and other modules may need the ability to override
+      // this in specific circumstances.
+      if (isset($id) && !isset($entity->is_draft_revision)) {
+        $entity->is_draft_revision = TRUE;
+      }
     }
 
     cps_set_revision_log($entity);
