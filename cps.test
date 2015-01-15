@@ -173,6 +173,18 @@ class CpsTest extends CpsWebTestCase {
     $this->assertEqual($node->title, 'Test second changeset');
     $this->assertTrue($node->status);
 
+    // Test unpublishing a changeset.
+    $this->unpublishChangeset($changeset2->changeset_id);
+    cps_override_changeset(CPS_PUBLISHED_CHANGESET);
+    $node = node_load($node->nid);
+    $this->assertEqual($node->title, 'Test first changeset');
+    $this->assertTrue($node->status);
+
+    $this->publishChangeset($changeset2->changeset_id);
+    cps_override_changeset(CPS_PUBLISHED_CHANGESET);
+    $node = node_load($node->nid);
+    $this->assertEqual($node->title, 'Test second changeset');
+    $this->assertTrue($node->status);
   }
 
   /**
@@ -207,5 +219,15 @@ class CpsTest extends CpsWebTestCase {
     $this->drupalGet("admin/structure/changesets/$changeset_id/publish");
     $this->assertResponse(200);
     $this->drupalPost("admin/structure/changesets/$changeset_id/publish", array(), t('Publish'));
+  }
+
+  /**
+   * Unpublish a changeset.
+   */
+  function unpublishChangeset($changeset_id) {
+    $this->drupalGet("admin/structure/changesets/$changeset_id/unpublish");
+    $this->assertResponse(200);
+    $this->drupalPost("admin/structure/changesets/$changeset_id/unpublish", array(), t('Revert'));
+    $this->assertResponse(200);
   }
 }

@@ -163,19 +163,10 @@ function cps_changeset_publish_changeset_form_submit($form, &$form_state) {
   // This is handled as a traditional submit method rather than my usual
   // preference of divorcing work from the form itself due to the nature
   // of batch API.
-
-  // Create a list of entity ids in a format that the batch can use.
-  $entity_ids = array();
-  $entities = $form_state['entity']->getChangedEntities();
-  foreach ($entities as $entity_type => $changed_entities) {
-    foreach ($changed_entities as $entity_id => $entity) {
-      $entity_ids[] = array($entity_type, $entity_id);
-    }
-  }
   $batch = array(
     'operations' => array(
       array('cps_changeset_publish_batch_lock', array()),
-      array('cps_changeset_publish_batch_entities', array($entity_ids, $form_state['entity'])),
+      array('cps_changeset_publish_batch_entities', array($form_state['entity'])),
     ),
     'finished' => 'cps_changeset_publish_batch_finished',
     'title' => t('Publishing %changeset', array('%changeset' => $form_state['entity']->name)),
@@ -188,7 +179,7 @@ function cps_changeset_publish_changeset_form_submit($form, &$form_state) {
 
   foreach (cps_get_supported() as $entity_type) {
     // For every entity type we support, add another operation for that entity type.
-    $batch['operations'][] = array('cps_changeset_publish_batch_update', array($entity_type));
+    $batch['operations'][] = array('cps_changeset_publish_batch_update', array($form_state['entity'], $entity_type));
   }
 
   drupal_alter('cps_publish_changeset_batch', $batch, $form_state);
@@ -221,44 +212,15 @@ function cps_changeset_publish_batch_lock(&$context) {
 /**
  * Batch API callback to publish the entities in a changeset.
  *
- * @param $entity_ids
- *   An array of arrays. Each entry in the array is first entity_type, then entity_id.
  * @param $changeset
  * @param $context
  */
-function cps_changeset_publish_batch_entities($entity_ids, $changeset, &$context) {
-  // Use the $context['sandbox'] at your convenience to store the
-  // information needed to track progression between successive calls.
-  if (empty($context['sandbox'])) {
-    $context['sandbox'] = array();
-    $context['sandbox']['progress'] = 0;
-    $context['sandbox']['current_item'] = 0;
-    $context['results']['entity'] = $changeset;
-  }
-
-  // Ensure that entities are loaded in the correct changeset.
-  cps_override_changeset($changeset->changeset_id);
-
-  $count = count($entity_ids);
-  foreach (range(0, 2) as $i) {
-    // Make sure long-saving content still saves okay.
-    drupal_set_time_limit(60);
-    $index = $context['sandbox']['current_item']++;
-    // If our index no longer exists...
-    if (!isset($entity_ids[$index])) {
-      $context['finished'] = TRUE;
-      break;
-    }
-
-    $context['finished'] = FALSE;
-    list($entity_type, $entity_id) = $entity_ids[$index];
-    if (cps_is_supported($entity_type)) {
-      cps_make_revision_published($entity_type, $entity_id, $changeset->changeset_id);
-    }
-    $context['sandbox']['progress']++;
-    $context['message'] = t('Publishing item @index of @count', array('@index' => $index, '@count' => $count));
-  }
-  cps_override_changeset(NULL);
+function cps_changeset_publish_batch_entities($changeset, &$context) {
+  cps_publish_changeset_entities($changeset->changeset_id);
+  $context['results']['changeset'] = $changeset;
+  $context['message'] = t('Publishing entities');
+  $context['finished'] = TRUE;
+  return $context;
 }
 
 /**
@@ -278,7 +240,9 @@ function cps_changeset_publish_batch_variables(&$context) {
  * @param $entity_type
  * @param $context
  */
-function cps_changeset_publish_batch_update($entity_type, &$context) {
+function cps_changeset_publish_batch_update($changeset, $entity_type, &$context) {
+  $changeset_id = $changeset->changeset_id;
+
   // Use the $context['sandbox'] at your convenience to store the
   // information needed to track progression between successive calls.
   if (empty($context['sandbox'])) {
@@ -289,59 +253,17 @@ function cps_changeset_publish_batch_update($entity_type, &$context) {
     $context['message'] = t('Marking unchanged @entity_type content', array('@entity_type' => $entity_info['label']));
   }
 
-  $count = 0;
   $limit = 100;
-  // We should be able to process a lot of these at a time.
-  try {
-    $query = new EntityFieldQuery();
-    $results = $query
-      ->entityCondition('entity_type', $entity_type)
-      ->range($context['sandbox']['current_item'], $limit)
-      ->execute();
-    $context['sandbox']['progress']++;
-  }
-  catch (Exception $e) {
-  }
+  $last = cps_add_untracked_entities($changeset_id, $entity_type, $context['sandbox']['current_item'], $limit);
 
+  $context['results']['changeset'] = $changeset;
 
-  if (!empty($results[$entity_type])) {
-    $count = count($results[$entity_type]);
-    // Load which entities have revisions.
-    $result = db_query('SELECT * FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id IN (:entity_id) AND changeset_id = :changeset',
-      array(
-        ':entity_type' => $entity_type,
-        ':entity_id' => array_keys($results[$entity_type]),
-        ':changeset' => $context['results']['entity']->changeset_id,
-      ));
-
-    $used = array();
-    while ($record = $result->fetchObject()) {
-      $used[$record->entity_id] = TRUE;
-    }
-
-    foreach (entity_load($entity_type, array_keys($results[$entity_type])) as $entity) {
-
-      list($entity_id, $revision_id,) = entity_extract_ids($entity_type, $entity);
-      if (empty($used[$entity_id])) {
-        db_insert('cps_entity')
-          ->fields(array(
-            'entity_type' => $entity_type,
-            'entity_id' => $entity_id,
-            'revision_id' => $revision_id,
-            'changeset_id' => $context['results']['entity']->changeset_id,
-            'published' => 1,
-          ))
-          ->execute();
-      }
-    }
-  }
-
-  if ($count < $limit) {
+  if (!$last) {
     $context['finished'] = TRUE;
   }
   else {
     $context['finished'] = FALSE;
-    $context['sandbox']['current_item'] += $limit;
+    $context['sandbox']['current_item'] = $last + 1;
   }
 }
 
@@ -354,29 +276,30 @@ function cps_changeset_publish_batch_update($entity_type, &$context) {
  */
 function cps_changeset_publish_batch_finished($success, $results, $operations) {
   if ($success) {
+    $changeset = $results['changeset'];
     // Set the publication time on the item. We have to GET the item somehow.
-    $results['entity']->published = REQUEST_TIME;
-    $results['entity']->setStatus('archived');
+    $changeset->published = REQUEST_TIME;
+    $changeset->setStatus('archived');
     if (variable_get('cps_override_variables', FALSE)) {
 
       // Rebuild the variables in the same manner that the cache is built from variable_initialize.
-      $results['entity']->variables = array_map('unserialize', db_query('SELECT name, value FROM {variable}')->fetchAllKeyed());
+      $changeset->variables = array_map('unserialize', db_query('SELECT name, value FROM {variable}')->fetchAllKeyed());
       // Go through and unset any whitelisted variables so that they aren't stored in the archive.
-      foreach ($results['entity']->variables as $name => $value) {
+      foreach ($changeset->variables as $name => $value) {
         if (strpos($name, 'cache') !== FALSE) {
           unset($results['entity']->variables[$name]);
         }
       }
     }
 
-    $results['entity']->save();
+    $changeset->save();
 
-    module_invoke_all('cps_changeset_published', $results['entity'], 'published');
+    module_invoke_all('cps_changeset_published', $changeset, 'published');
 
     // Switch them to the published changeset.
     cps_set_current_changeset(NULL);
 
-    drupal_set_message(t('The site version %changeset has been published.', array('%changeset' => $results['entity']->name)));
+    drupal_set_message(t('The site version %changeset has been published.', array('%changeset' => $changeset->name)));
   }
 
   cps_publish_unlock();
@@ -429,7 +352,7 @@ function cps_changeset_unpublish_changeset_form_submit($form, &$form_state) {
 
   foreach (cps_get_supported() as $entity_type) {
     // For every entity type we support, add another operation for that entity type.
-    $batch['operations'][] = array('cps_changeset_unpublish_batch_entity', array($entity_type));
+    $batch['operations'][] = array('cps_changeset_unpublish_batch_entity', array());
   }
 
   drupal_alter('cps_unpublish_changeset_batch', $batch, $form_state);
@@ -484,89 +407,11 @@ function cps_changeset_unpublish_batch_variables($item, $previous, &$context) {
  * @param $entity_type
  * @param $context
  */
-function cps_changeset_unpublish_batch_entity($entity_type, &$context) {
-  // Use the $context['sandbox'] at your convenience to store the
-  // information needed to track progression between successive calls.
-  $entity_info = entity_get_info($entity_type);
-  if (empty($context['sandbox'])) {
-    $context['sandbox'] = array();
-    $context['sandbox']['progress'] = 0;
-    $context['sandbox']['current_item'] = 0;
-    $context['message'] = t('Reverting @entity_type content', array('@entity_type' => $entity_info['label']));
-  }
-
-  // Ensure that entities are queried and loaded in the published changeset.
-  // cps_override_changeset() does not work for EntityFieldQuery() since it only
-  // affects the handler.
-  cps_set_current_changeset(CPS_PUBLISHED_CHANGESET);
-  $count = 0;
-  $limit = 100;
-  // We should be able to process a lot of these at a time.
-  try {
-    $query = new EntityFieldQuery();
-    $results = $query
-      ->entityCondition('entity_type', $entity_type)
-      ->range($context['sandbox']['current_item'], $limit)
-      ->propertyOrderBy($entity_info['entity keys']['id'], 'DESC')
-      ->execute();
-    $context['sandbox']['progress']++;
-  }
-  catch (Exception $e) {
-  }
-
-  if (!empty($results[$entity_type])) {
-    $count = count($results[$entity_type]);
-
-    // Load which entities have revisions.
-    $result = db_query('SELECT * FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id IN (:entity_id) AND changeset_id = :changeset',
-      array(
-        ':entity_type' => $entity_type,
-        ':entity_id' => array_keys($results[$entity_type]),
-        ':changeset' => $context['results']['previous']->changeset_id,
-      ));
-
-    $changesets = array();
-    while ($record = $result->fetchObject()) {
-      $changesets[$record->entity_id] = $record;
-    }
-    // Loading entities also has to happen in the published changeset.
-    // For each entity whose current revision_id is different from the previous, republish the previous.
-    foreach (entity_load($entity_type, array_keys($results[$entity_type])) as $entity) {
-      // Publishing revisions has to happen in the published revision.
-      list($entity_id, $revision_id,) = entity_extract_ids($entity_type, $entity);
-      if (isset($changesets[$entity_id]->revision_id) && $revision_id != $changesets[$entity_id]->revision_id) {
-        cps_override_changeset(CPS_PUBLISHED_CHANGESET);
-        cps_make_revision_published($entity_type, $entity_id, $context['results']['previous']->changeset_id);
-      }
-      else {
-        // Check to see if there wasn't a revision of the entity in the previous revision
-        // at all. If that is the case, the entity was new and there was an initial live
-        // revision created for it that exists in no changeset. We'll have to make that
-        // revision live again.
-        if (!isset($changesets[$entity_id])) {
-          cps_make_revision_published($entity_type, $entity_id, 'initial');
-        }
-
-        // If the reverted revision is the same as the live revision, remove the record so
-        // we do not falsely report too many changes.
-        db_delete('cps_entity')
-          ->condition('entity_type', $entity_type)
-          ->condition('entity_id', $entity_id)
-          ->condition('changeset_id', $context['results']['entity']->changeset_id)
-          ->isNotNull('published')
-          ->execute();
-      }
-      cps_override_changeset(CPS_PUBLISHED_CHANGESET);
-    }
-  }
-
-  if ($count < $limit) {
-    $context['finished'] = TRUE;
-  }
-  else {
-    $context['finished'] = FALSE;
-    $context['sandbox']['current_item'] += $limit;
-  }
+function cps_changeset_unpublish_batch_entity(&$context) {
+  $changeset_id = $context['results']['entity']->changeset_id;
+  $previous = $context['results']['previous']->changeset_id;
+  cps_unpublish_changeset_entities($changeset_id, $previous);
+  cps_remove_untracked_entities($changeset_id);
 }
 
 /**

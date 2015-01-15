@@ -126,7 +126,7 @@ class CPSChangeset extends Entity {
   public function getChangedEntities() {
     if (!isset($this->changedEntities)) {
       $this->changedEntities = array();
-      $result = db_query("SELECT * FROM {cps_entity} WHERE changeset_id = :changeset AND published IS NULL", array(':changeset' => $this->changeset_id));
+      $result = db_query("SELECT * FROM {cps_entity} WHERE changeset_id = :changeset AND published = 0", array(':changeset' => $this->changeset_id));
 
       $entities = array();
       $entity_info = entity_get_info();

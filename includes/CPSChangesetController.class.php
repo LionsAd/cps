@@ -121,7 +121,7 @@ class CPSChangesetController extends EntityAPIController {
 
     // Get a change count for each changeset.
     // @index cps_entity.published_changeset_id
-    $result = db_query("SELECT changeset_id, count(*) as count FROM {cps_entity} WHERE published IS NULL AND changeset_id IN (:changeset_ids) GROUP BY changeset_id ", array(':changeset_ids' => array_keys($queried_entities)));
+    $result = db_query("SELECT changeset_id, count(*) as count FROM {cps_entity} WHERE published = 0 AND changeset_id IN (:changeset_ids) GROUP BY changeset_id ", array(':changeset_ids' => array_keys($queried_entities)));
     while ($change = $result->fetchObject()) {
       if (isset($queried_entities[$change->changeset_id])) {
         $queried_entities[$change->changeset_id]->changeCount = $change->count;

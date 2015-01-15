@@ -391,11 +391,11 @@ function cps_revision_list($entity, $entity_type) {
   $query->fields('c', array('changeset_id', 'revision_id'))
     ->condition('c.entity_type', $entity_type)
     ->condition("r.$id_key", $entity_id)
-    // We also only include where c.published IS NULL, because if it's set
+    // We also only include where c.published - 0, because if it's set
     // that means the entry was added when a changeset was published to
     // preserve the site state at the time it was published and is not relevant
     // here.
-    ->isNull('c.published')
+    ->condition('c.published', 0)
     // the "initial" revision is a special one created to ensure that content
     // isn't accidentally visible on the site until published, and is not
     // relevant to show.

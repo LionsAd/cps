@@ -772,7 +772,6 @@ function cps_get_supported() {
  * @{inheritdoc}
  */
 function cps_make_revision_published($entity_type, $entity_id, $changeset_id) {
-
   cps_override_changeset(CPS_PUBLISHED_CHANGESET);
   // Find the revision id.
   $revision_id = db_query('SELECT revision_id FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id = :entity_id AND changeset_id = :changeset',
@@ -784,6 +783,145 @@ function cps_make_revision_published($entity_type, $entity_id, $changeset_id) {
 
   drafty()->publishRevision($entity_type, $entity_id, $revision_id);
   cps_override_changeset(NULL);
+}
+
+/**
+ * Get tracked entities in a changeset.
+ *
+ * @param $changeset_id
+ *   A changeset ID.
+ *
+ * @return
+ *   An array with entity type as keys and array of entity IDs as values.
+ *   type.
+ */
+function cps_get_tracked_entities($changeset_id) {
+  $cache = &drupal_static(__FUNCTION__, array());
+  if (!isset($cache[$changeset_id])) {
+    $result = db_query('SELECT entity_type, entity_id  FROM {cps_entity} WHERE changeset_id = :changeset_id AND published = 0', array(':changeset_id' => $changeset_id));
+    foreach ($result as $record) {
+      $cache[$changeset_id][$record->entity_type][$record->entity_id] = $record->entity_id;
+    }
+  }
+  return $cache[$changeset_id];
+}
+
+/**
+ * Publish a changeset.
+ *
+ * @param $changeset_id
+ *   A changeset ID.
+ */
+function cps_publish_changeset_entities($changeset_id) {
+  // Get all tracked entities in the changeset.
+  $changed = cps_get_tracked_entities($changeset_id);
+  $transaction = db_transaction();
+  try {
+    foreach ($changed as $entity_type => $entity_ids) {
+      foreach ($entity_ids as $entity_id) {
+        cps_make_revision_published($entity_type, $entity_id, $changeset_id);
+      }
+    }
+  }
+  catch (Exception $e) {
+    $transaction->rollback();
+    trigger_error(t('Unable to publish entities in changeset'), E_USER_ERROR);
+    watchdog_exception('CPS', $e);
+  }
+}
+
+/**
+ * Unpublish a changeset.
+ *
+ * @param $changeset_id
+ *   A changeset ID.
+ */
+function cps_unpublish_changeset_entities($changeset_id, $previous_changeset_id) {
+  $changed = cps_get_tracked_entities($changeset_id);
+  $transaction = db_transaction();
+  try {
+    foreach ($changed as $entity_type => $entity_ids) {
+      foreach ($entity_ids as $entity_id) {
+        $vid = db_query('SELECT revision_id FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id = :entity_id AND changeset_id = :changeset_id AND published = 0', array(
+          'entity_type' => $entity_type,
+          'entity_id' => $entity_id,
+          'changeset_id' => $changeset_id,
+        ));
+        if ($vid) {
+          cps_make_revision_published($entity_type, $entity_id, $previous_changeset_id);
+        }
+        else {
+          cps_make_revision_published($entity_type, $entity_id, 'initial');
+        }
+      }
+    }
+  }
+  catch (Exception $e) {
+    $transaction->rollback();
+    trigger_error(t('Unable to unpublish entities in changeset'), E_USER_ERROR);
+    watchdog_exception('CPS', $e);
+  }
+}
+
+/**
+ * Remove non-tracked items from a changeset.
+ *
+ * @param $changeset_id
+ *   A changeset ID.
+ */
+function cps_remove_untracked_entities($changeset_id) {
+  db_delete('cps_entity')
+    ->condition('changeset_id', $changeset_id)
+    ->condition('published', 1)
+    ->execute();
+}
+
+/**
+ * Record the published version ID for untracked entities.
+ *
+ * @param $changeset_id
+ *   The changeset ID.
+ * @param $entity_type
+ *   Then entity type.
+ * @param $start
+ *   The entity ID to start the query from, defaults to 0.
+ * @param $limit
+ *   The number of entities to process.
+ */
+function cps_add_untracked_entities($changeset_id, $entity_type, $start = 0, $limit = 100) {
+  $tracked = cps_get_tracked_entities($changeset_id);
+  $entity_query = new EntityFieldQuery();
+  $info = entity_get_info($entity_type);
+  if (!empty($tracked[$entity_type])) {
+    $results = $entity_query
+      ->entityCondition('entity_type', $entity_type)
+      ->entityCondition('entity_id', $tracked[$entity_type], 'NOT IN')
+      ->entityOrderBy('entity_id', 'ASC')
+      ->range($start, $limit)
+      ->execute();
+    if (!empty($results[$entity_type])) {
+      $query = db_insert('cps_entity')
+        ->fields(array(
+          'entity_type',
+          'entity_id',
+          'revision_id',
+          'changeset_id',
+          'published',
+        ));
+      foreach ($results[$type] as $entity) {
+        $query->values(array(
+          'entity_type' => $entity_type,
+          'entity_id' => $entity->{$info['entity keys']['id']},
+          'revision_id' => $entity->{$info['entity keys']['revision']},
+          'changeset_id' => $changeset_id,
+          'published' => 1,
+        ));
+      }
+      $query->execute();
+      // Return the last touched entity ID.
+      return max(array_keys($results[$entity_type]));
+    }
+  }
 }
 
 /**

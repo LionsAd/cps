@@ -40,6 +40,8 @@ function cps_schema() {
         'description' => 'True if this entity was added to the changeset when it was published.',
         'type' => 'int',
         'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
       ),
     ),
     'primary key' => array('entity_type', 'entity_id', 'changeset_id'),
@@ -89,8 +91,6 @@ function cps_schema() {
       'published' => array(
         'description' => 'Timestamp indicating when the changeset was published.',
         'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
       ),
       'variables' => array(
         'description' => 'A serialized array of variables staged in this changeset.',
@@ -351,4 +351,29 @@ function cps_update_7103() {
   if (!module_enable(array('entity_status'))) {
     throw new Exception('Entity status module must be available to update to this version of CPS.');
   }
+}
+
+/**
+ * Change {cps_entity}.published to default to 0.
+ */
+function cps_update_7104() {
+  db_update('cps_entity')
+    ->condition('published', 1, '<>')
+    ->fields(array('published' => 0))
+    ->execute();
+  db_drop_index('cps_entity', 'published_changeset_id');
+
+  $field = array(
+    'description' => 'True if this entity was added to the changeset when it was published.',
+    'type' => 'int',
+    'unsigned' => TRUE,
+    'not null' => TRUE,
+    'default' => 0,
+  );
+  $indexes = array(
+    'indexes' => array(
+      'published_changeset_id', array('published', 'changeset_id'),
+    ),
+  );
+  db_change_field('cps_entity', 'published', 'published', $field, $indexes);
 }
