@@ -5,7 +5,9 @@
  * Main module file for the Content Preview System.
  */
 
-define('CPS_PUBLISHED_CHANGESET', FALSE);
+define('CPS_PUBLISHED_CHANGESET', 'published');
+define('CPS_LIVE_STATUS', 'live');
+define('CPS_ARCHIVED_STATUS', 'archived');
 
 require_once __DIR__ . '/includes/query.inc';
 
@@ -353,7 +355,7 @@ function cps_entity_load(&$entities, $entity_type) {
   // @todo: should this include the actual 'published' changeset, that has
   // published = 0 so is included in the query currently.
   $changesets = cps_get_unpublished_changesets();
-  if ($changeset) {
+  if ($changeset != CPS_PUBLISHED_CHANGESET) {
     $changesets[] = $changeset;
   }
   $result = db_query('SELECT * FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id IN (:ids) AND changeset_id IN (:changesets)', array(':entity_type' => $entity_type, ':ids' => $keys, ':changesets' => $changesets));
@@ -419,7 +421,7 @@ function cps_entity_presave($entity, $entity_type) {
       $initial = TRUE;
       cps_override_changeset('initial');
     }
-    else if ($current_changeset) {
+    else if ($current_changeset != CPS_PUBLISHED_CHANGESET) {
       list($id) = entity_extract_ids($entity_type, $entity);
       // Force a draft revision to be created when updating entities within a
       // changeset. However respect the state of $entity->is_draft_revision if
@@ -447,7 +449,7 @@ function cps_entity_presave($entity, $entity_type) {
  */
 function cps_entity_insert($entity, $entity_type) {
   $changeset = cps_get_current_changeset();
-  if (!$changeset || !cps_is_supported($entity_type)) {
+  if ($changeset == CPS_PUBLISHED_CHANGESET || !cps_is_supported($entity_type)) {
     return;
   }
   // When an new entity is inserted, we actually want two revisions to be saved.
@@ -484,7 +486,7 @@ function cps_entity_insert($entity, $entity_type) {
 function cps_entity_update($entity, $entity_type) {
   $changeset = cps_get_current_changeset();
   // If we are not on a change set, do nothing.
-  if (!$changeset || !cps_is_supported($entity_type)) {
+  if ($changeset == CPS_PUBLISHED_CHANGESET || !cps_is_supported($entity_type)) {
     return;
   }
 
@@ -616,7 +618,7 @@ function cps_views_api() {
  */
 function cps_set_revision_log($entity) {
   $current_changeset = cps_get_current_changeset();
-  if ($current_changeset) {
+  if ($current_changeset != CPS_PUBLISHED_CHANGESET) {
     $changeset = cps_changeset_load($current_changeset);
     if ($changeset) {
       $name = $changeset->name;
@@ -696,15 +698,17 @@ function cps_get_current_changeset($test = FALSE) {
 
   // Use a $test flag because there are phases where we do not want to invoke
   // a load.
-  if ($test && $changeset_id) {
+  if ($test && $changeset_id != CPS_PUBLISHED_CHANGESET) {
     $changeset = cps_changeset_load($changeset_id);
+
     if (!$changeset) {
+      // If no changeset was loaded, default to published.
       $changeset_id = CPS_PUBLISHED_CHANGESET;
     }
   }
-  
-  // Record that we have touched this changeset.
+
   if ($changeset_id != CPS_PUBLISHED_CHANGESET) {
+    // Record that we have touched this changeset.
     $_SESSION['touched changesets'][$changeset_id] = REQUEST_TIME;
   }
 
@@ -1005,14 +1009,14 @@ function cps_can_edit_entities($op, $entity_type, $entity, $changeset_id = NULL)
 
 /**
  * Determine if an entity can be deleted.
- * 
+ *
  * Once an entity has appeared in a published changeset, the entity should
  * not be deletable so that the site history is preserved. Instead, entities
  * should be unpublished which will make them disappear from standard view.
- * 
+ *
  * This method ONLY checks for CPS reasons, and the entity is expected
  * to do its own access control.
- * 
+ *
  * @param string $entity_type
  *   The type of entity to test.
  * @param $entity
@@ -1063,7 +1067,7 @@ function cps_get_changesets() {
   try {
     $query = new EntityFieldQuery();
     $results = $query->entityCondition('entity_type', 'cps_changeset')
-      ->propertyCondition('status', 'archived', '<>')
+      ->propertyCondition('status', CPS_ARCHIVED_STATUS, '<>')
       ->propertyCondition('uid', $user->uid)
       ->propertyOrderBy('name')
       // This tag allows another module to modify this list if necessary.
@@ -1116,7 +1120,7 @@ function cps_get_changesets() {
         else {
           $recent[format_username($accounts[$entity->uid])][$id] = $entity->name;
         }
-      }      
+      }
     }
   }
 
@@ -1178,7 +1182,7 @@ function cps_changeset_get_states() {
         'weight' => 0,
         'type' => 'open',
       ),
-      'archived' => array(
+      CPS_ARCHIVED_STATUS => array(
         'label' => t('Archived'),
         'weight' => 9,
         'type' => 'closed',
@@ -1268,7 +1272,7 @@ function cps_changeset_edit_warning($entity) {
 function cps_entity_in_published_changeset($entity_type, $entity) {
   list($id) = entity_extract_ids($entity_type, $entity);
   // Treat a changeset as published if the status is 'live' or 'archived'.
-  $result = db_query('SELECT 1 FROM {cps_entity} ce INNER JOIN {cps_changeset} cc ON ce.changeset_id = cc.changeset_id AND cc.status IN (:published) WHERE ce.entity_type = :type AND ce.entity_id = :id', array(':published' => array('archived', 'published'), ':type' => $entity_type, ':id' => $id))->fetchField();
+  $result = db_query('SELECT 1 FROM {cps_entity} ce INNER JOIN {cps_changeset} cc ON ce.changeset_id = cc.changeset_id AND cc.status IN (:published) WHERE ce.entity_type = :type AND ce.entity_id = :id', array(':published' => array(CPS_ARCHIVED_STATUS, 'published'), ':type' => $entity_type, ':id' => $id))->fetchField();
 
   return $result;
 }
@@ -1279,7 +1283,7 @@ function cps_entity_in_published_changeset($entity_type, $entity) {
  *
  * This function relies on the diff module. It is largely copied from
  * _diff_body_rows() which is unnecessarily node specific.
- * 
+ *
  * @param string $entity_type
  *   The entity type to compare.
  * @param object $old
@@ -1288,7 +1292,7 @@ function cps_entity_in_published_changeset($entity_type, $entity) {
  *   Node for comparison which will be displayed on the right side.
  * @param string $state
  *   The state to render for the diff.
- * 
+ *
  * @return array
  *   The rows of the diff.
  */

@@ -45,7 +45,7 @@ function cps_workflow_simple_menu() {
 function cps_workflow_simple_entity_update($entity, $entity_type) {
   // React to changeset status changes.
   if ($entity_type == 'cps_changeset' && isset($entity->oldStatus)) {
-    if ($entity->status == 'archived' && $entity->oldStatus == 'review') {
+    if ($entity->status == CPS_ARCHIVED_STATUS && $entity->oldStatus == 'review') {
       $account = user_load($entity->uid);
       cps_workflow_simple_send($account->mail, 'publish', $entity);
     }

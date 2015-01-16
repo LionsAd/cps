@@ -176,7 +176,7 @@ function cps_install() {
       'description' => 'The live changeset. This changeset cannot be edited or deleted.',
       'published' => 0,
       'uid' => 0,
-      'status' => 'live',
+      'status' => CPS_LIVE_STATUS,
     ))
     ->execute();
 }
@@ -282,7 +282,7 @@ function cps_update_7001() {
   // Update all pre-existing published changesets to the published state.
   db_update('cps_changeset')
     ->fields(array(
-      'status' => 'archived'
+      'status' => CPS_ARCHIVED_STATUS,
     ))
     ->condition('published', 0, '>')
     ->execute();
@@ -297,12 +297,13 @@ function cps_update_7001() {
         'description' => 'The live changeset. This changeset cannot be edited or deleted.',
         'published' => 0,
         'uid' => 1,
-        'status' => 'live',
+        'status' => CPS_LIVE_STATUS,
       ))
       ->execute();
   }
   else {
-    db_query("UPDATE {cps_changeset} SET status = 'live', uid = 1 WHERE changeset_id = 'published'");
+    $live = CPS_LIVE_STATUS;
+    db_query("UPDATE {cps_changeset} SET status = '$live', uid = 1 WHERE changeset_id = 'published'");
   }
 
   db_update('cps_changeset')

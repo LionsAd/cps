@@ -11,7 +11,7 @@ function cps_changeset_preview_form($form, &$form_state) {
   $changeset_id = cps_get_current_changeset(TRUE);
 
   if ($changeset_id == CPS_PUBLISHED_CHANGESET) {
-    $changeset_state = 'live';
+    $changeset_state = CPS_LIVE_STATUS;
   }
   else {
     $changeset = cps_changeset_load($changeset_id);
@@ -43,7 +43,7 @@ function cps_changeset_preview_form($form, &$form_state) {
     );
   }
 
-  if ($changeset_state == 'live') {
+  if ($changeset_state == CPS_LIVE_STATUS) {
     $form['new'] = array(
       '#markup' => l(t('Create'), 'admin/structure/changesets/add', array(
         'query' => drupal_get_destination(),
@@ -279,7 +279,7 @@ function cps_changeset_publish_batch_finished($success, $results, $operations) {
     $changeset = $results['changeset'];
     // Set the publication time on the item. We have to GET the item somehow.
     $changeset->published = REQUEST_TIME;
-    $changeset->setStatus('archived');
+    $changeset->setStatus(CPS_ARCHIVED_STATUS);
     if (variable_get('cps_override_variables', FALSE)) {
 
       // Rebuild the variables in the same manner that the cache is built from variable_initialize.

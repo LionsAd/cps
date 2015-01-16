@@ -345,7 +345,7 @@ class CPSChangesetController extends EntityAPIController {
       foreach ($entity->history as $item) {
         $status = isset($statuses[$item->new_status]) ? $statuses[$item->new_status] : '';
         // Special status for unpublishing.
-        if ($item->new_status == 'unpublished' && $item->previous_status == 'archived') {
+        if ($item->new_status == 'unpublished' && $item->previous_status == CPS_ARCHIVED_STATUS) {
           $status = t('Unpublished');
         }
 
