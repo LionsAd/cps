@@ -6,6 +6,8 @@
  */
 
 define('CPS_PUBLISHED_CHANGESET', 'published');
+define('CPS_INSTALLED_CHANGESET', 'installed');
+
 define('CPS_LIVE_STATUS', 'live');
 define('CPS_ARCHIVED_STATUS', 'archived');
 
@@ -448,17 +450,37 @@ function cps_entity_presave($entity, $entity_type) {
  * Implements hook_entity_insert().
  */
 function cps_entity_insert($entity, $entity_type) {
-  $changeset = cps_get_current_changeset();
-  if ($changeset == CPS_PUBLISHED_CHANGESET || !cps_is_supported($entity_type)) {
+  if (!cps_is_supported($entity_type)) {
     return;
   }
+
+  $changeset = cps_get_current_changeset();
+  list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
+
+  // If a new entity is inserted with the live/published changeset active,
+  // it is immediately live. Mark it as such in the most recently published
+  // changeset. This handles making sure that there is a history for
+  // programmatically created entities outside of changesets.
+  if ($changeset == CPS_PUBLISHED_CHANGESET) {
+    $changeset_id = db_query("SELECT changeset_id FROM {cps_changeset} ORDER BY published DESC LIMIT 1")->fetchCol();
+    db_insert('cps_entity')
+      ->fields(array(
+        'entity_type' => $entity_type,
+        'entity_id' => $entity_id,
+        'revision_id' => $revision_id,
+        'changeset_id' => $changeset_id,
+        'published' => TRUE,
+      ))->execute();
+
+    return;
+  }
+
   // When an new entity is inserted, we actually want two revisions to be saved.
   //  - An unpublished revision in the 'published' changeset, since CPS treats
   //    any entity that's never been published as 'unpublished'.
   //  - A draft revision in the current changeset with the published flag set to
   //    the same as on the node form.
 
-  list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
   db_insert('cps_entity')
     ->fields(array(
       'entity_type' => $entity_type,

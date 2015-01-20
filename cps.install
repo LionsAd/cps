@@ -179,6 +179,108 @@ function cps_install() {
       'status' => CPS_LIVE_STATUS,
     ))
     ->execute();
+
+  cps_create_installed_changeset();
+}
+
+/**
+ * Create the special changeset used to mark content when CPS is installed.
+ */
+function cps_create_installed_changeset() {
+  // Make sure this is safe to run so that update hooks can call this to make
+  // sure the changeset exists and not worry about dependencies. So we insert
+  // this directly rather than using the entity system.
+  $result = db_query('SELECT changeset_id FROM {cps_changeset} WHERE changeset_id = :changeset_id', array(':changeset_id' => CPS_INSTALLED_CHANGESET))->fetchField();
+  if (!$result) {
+    db_insert('cps_changeset')
+      ->fields(array(
+        'changeset_id' => CPS_INSTALLED_CHANGESET,
+        'name' => 'Live content at install',
+        'description' => 'The installed changeset. This is only used to mark the state of live content at the time of install.',
+        'published' => REQUEST_TIME,
+        'uid' => 0,
+        'status' => 'archived',
+      ))
+      ->execute();
+  }
+}
+
+/**
+ * Mark content as part of the installed changeset.
+ *
+ * This method is used when an entity is newly added to CPS support to
+ * mark all content that is not currently in CPS as having gone live
+ * for the installed changeset. It is used to keep the state stable when
+ * CPS is introduced to an already existing system.
+ *
+ * @param string $entity_type
+ *   The entity type.
+ *
+ * @param mixed $sandbox
+ *   If provided, this function won't loop, and you're expected to
+ *   use a sandbox in a batch or update hook in order to use this in
+ *   a long run. However install hooks don't do sandboxes, so in that
+ *   case it should just loop.
+ *
+ * @return bool
+ *   FALSE if finished, TRUE if there might be more records.
+ */
+function cps_mark_current_content($entity_type, &$sandbox = NULL) {
+  cps_create_installed_changeset();
+
+  $entity_info = entity_get_info($entity_type);
+  $table = $entity_info['base table'];
+  $id_key = $entity_info['entity keys']['id'];
+  $revision_key = $entity_info['entity keys']['revision'];
+
+  $limit = 500;
+
+  if (isset($sandbox)) {
+    if (!isset($sandbox['current'])) {
+      $sandbox['current'] = 0;
+    }
+
+    $current = &$sandbox['current'];
+  }
+  else {
+    $current = 0;
+  }
+
+  // The do {} while () loop ensures this runs once if using sandbox, or until
+  // completion if not using sandbox.
+  do {
+    $query = db_select($table, 'base');
+    $query->addJoin('LEFT', 'cps_entity', 'ce', "ce.entity_type = :entity_type AND ce.entity_id = base.$id_key", array(':entity_type' => $entity_type));
+    // Only have results if there is no link to a changeset already.
+    $result = $query->fields('base', array($id_key, $revision_key))
+      ->isNull('ce.changeset_id')
+      ->range($current, $limit)
+      ->execute();
+
+    if ($result->rowCount() == 0) {
+      return FALSE;
+    }
+
+    $current += $limit;
+
+    // Use a multi-insert here for performance.
+    $insert_query = db_insert('cps_entity')
+      ->fields(array('entity_type', 'entity_id', 'revision_id', 'changeset_id', 'published'));
+
+    foreach ($result as $record) {
+      $insert_query->values(array(
+        'entity_type' => $entity_type,
+        'entity_id' => $record->{$id_key},
+        'revision_id' => $record->{$revision_key},
+        'changeset_id' => CPS_INSTALLED_CHANGESET,
+        'published' => 1, // Not part of the changeset but was live when changeset was published.
+      ));
+    }
+
+    $insert_query->execute();
+  } while (!isset($sandbox));
+
+  return TRUE;
 }
 
 /**
@@ -377,4 +479,11 @@ function cps_update_7104() {
     ),
   );
   db_change_field('cps_entity', 'published', 'published', $field, $indexes);
+}
+
+/**
+ * Create the 'installed' changeset.
+ */
+function cps_update_7105() {
+  cps_create_installed_changeset();
 }

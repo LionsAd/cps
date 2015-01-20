@@ -79,6 +79,10 @@ class CPSChangesetController extends EntityAPIController {
           break;
 
         case 'unpublish':
+          // The 'installed' changeset can never be unpublished.
+          if ($entity->changeset_id == CPS_INSTALLED_CHANGESET) {
+            return FALSE;
+          }
           // Only the most recent item can be unpublished.
           $access = user_access('publish changesets', $account) &&  $entity->getPreviousChangeset();
           break;

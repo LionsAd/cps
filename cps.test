@@ -116,7 +116,6 @@ class CpsTest extends CpsWebTestCase {
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 1, $changeset->changeset_id));
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 2, 'initial'));
     debug(db_query('SELECT nid, vid FROM {node_revision}')->fetchAll());
-    debug($this->getChangesetRecords('node', $node->nid));
     // Saving the node will increment the revision ID for the draft revision in
     // this changeset.
     // The revision ID of the 'initial' revision doesn't need to change - it's
