@@ -1175,7 +1175,7 @@ function cps_get_changesets() {
  *   An array of state types named keyed by the internal name.
  */
 function cps_changeset_get_state_types() {
-  $types = drupal_static(__FUNCTION__);
+  $types = &drupal_static(__FUNCTION__);
   if (!isset($types)) {
     $types = array(
       'open' => t('Open'),
@@ -1196,7 +1196,7 @@ function cps_changeset_get_state_types() {
  *   An array of state named keyed by the internal name.
  */
 function cps_changeset_get_states() {
-  $states = drupal_static(__FUNCTION__);
+  $states = &drupal_static(__FUNCTION__);
   if (!isset($states)) {
     $states = array(
       'unpublished' => array(
@@ -1224,7 +1224,7 @@ function cps_changeset_get_states() {
  * @return string[]
  */
 function cps_changeset_get_state_labels() {
-  $labels = drupal_static(__FUNCTION__);
+  $labels = &drupal_static(__FUNCTION__);
   if (!$labels) {
     $states = cps_changeset_get_states();
 
