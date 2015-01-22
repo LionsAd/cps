@@ -102,9 +102,9 @@ class cps_handler_relationship_changeset extends views_handler_relationship  {
         // Table isn't needed for the query, but it's needed by
         // views_join::__construct() otherwise we get a notice.
         'table' => $entity_info['base table'],
-        'field' => 'revision_id',
+        'field' => 'entity_id',
         'left_table' => $this->table_alias,
-        'left_field' => $entity_info['entity keys']['revision'],
+        'left_field' => $entity_info['entity keys']['id'],
         'type' => $this->options['required'] ? 'INNER' : 'LEFT',
       );
 
@@ -127,9 +127,9 @@ class cps_handler_relationship_changeset extends views_handler_relationship  {
       // This just adds the cps_entity table directly as an intermediary.
       $cps_def = array(
         'table' => 'cps_entity',
-        'field' => 'revision_id',
+        'field' => 'entity_id',
         'left_table' => $this->table_alias,
-        'left_field' => $entity_info['entity keys']['revision'],
+        'left_field' => $entity_info['entity keys']['id'],
         'type' => $this->options['required'] ? 'INNER' : 'LEFT',
         'extra' => array(
           array(

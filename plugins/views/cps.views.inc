@@ -28,7 +28,7 @@ function cps_views_data_alter(&$data) {
   $info = entity_get_info();
   foreach ($types as $type) {
     $entity_info = $info[$type];
-    $table = $entity_info['revision table'];
+    $table = $entity_info['base table'];
 
     $data[$table]['cps_changeset'] = array(
       'title' => t('CPS Site Version'),
