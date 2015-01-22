@@ -44,9 +44,9 @@ function cps_schema() {
         'default' => 0,
       ),
     ),
-    'primary key' => array('entity_type', 'entity_id', 'changeset_id'),
+    'primary key' => array('changeset_id', 'entity_type', 'entity_id'),
     'indexes' => array(
-      'changeset_id' => array('changeset_id'),
+      'entity' => array('entity_type', 'entity_id'),
       'published_changeset_id' => array('published', 'changeset_id'),
     ),
   );
@@ -486,4 +486,14 @@ function cps_update_7104() {
  */
 function cps_update_7105() {
   cps_create_installed_changeset();
+}
+
+/**
+ * Change cps_entity indexes.
+ */
+function cps_update_7106() {
+  db_drop_index('cps_entity', 'changeset_id');
+  db_drop_primary_key('cps_entity');
+  db_add_primary_key('cps_entity', array('changeset_id', 'entity_type', 'entity_id'));
+  db_add_index('cps_entity', 'entity', array('entity_type', 'entity_id'));
 }
