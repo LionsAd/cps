@@ -177,8 +177,10 @@ function hook_cps_remove_changeset($changeset, $entity_type, $entity) {
  * This is called after the entity revision has already been moved. The
  * destination will be the current changeset.
  *
- * @param CPSChangeset $changeset
+ * @param CPSChangeset $changeset_from
  *   The changeset the entity is being moved from.
+ * @param CPSChangeset $changeset_to
+ *   The changeset the entity is being moved to.
  * @param string $entity_type
  *   The type of entity being moved from the changeset.
  * @param $entity
@@ -187,7 +189,7 @@ function hook_cps_remove_changeset($changeset, $entity_type, $entity) {
  *   Either 'move' or 'copy'; 'copy' means the original revision should
  *   be left behind.
  */
-function hook_cps_move_changeset($changeset, $entity_type, $entity, $type) {
+function hook_cps_move_changeset($changeset_from, $changeset_to, $entity_type, $entity, $type) {
 
 }
 
