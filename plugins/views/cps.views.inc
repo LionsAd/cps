@@ -20,6 +20,10 @@ function cps_views_data_alter(&$data) {
     )
   );
 
+  // Replace entity API created handler with custom one that can reduce to just
+  // a set of types.
+  $data['cps_changeset']['status']['filter']['handler'] = 'cps_handler_filter_status';
+
   $types = cps_get_supported();
   $info = entity_get_info();
   foreach ($types as $type) {

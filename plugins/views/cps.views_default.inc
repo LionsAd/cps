@@ -95,15 +95,15 @@ function cps_views_default_views() {
   $handler->display->display_options['empty']['area']['empty'] = TRUE;
   $handler->display->display_options['empty']['area']['content'] = 'No site versions found.';
   $handler->display->display_options['empty']['area']['format'] = 'plain_text';
-  /* Relationship: Changeset: Author uid */
+  /* Relationship: Site version: Author uid */
   $handler->display->display_options['relationships']['author']['id'] = 'author';
   $handler->display->display_options['relationships']['author']['table'] = 'cps_changeset';
   $handler->display->display_options['relationships']['author']['field'] = 'author';
-  /* Field: Changeset: Name */
+  /* Field: Site version: Name */
   $handler->display->display_options['fields']['name']['id'] = 'name';
   $handler->display->display_options['fields']['name']['table'] = 'cps_changeset';
   $handler->display->display_options['fields']['name']['field'] = 'name';
-  /* Field: Changeset: Date created */
+  /* Field: Site version: Date created */
   $handler->display->display_options['fields']['created']['id'] = 'created';
   $handler->display->display_options['fields']['created']['table'] = 'cps_changeset';
   $handler->display->display_options['fields']['created']['field'] = 'created';
@@ -113,19 +113,19 @@ function cps_views_default_views() {
   $handler->display->display_options['fields']['name_1']['field'] = 'name';
   $handler->display->display_options['fields']['name_1']['relationship'] = 'author';
   $handler->display->display_options['fields']['name_1']['label'] = 'Created by';
-  /* Field: Changeset: Status */
+  /* Field: Site version: Status */
   $handler->display->display_options['fields']['status']['id'] = 'status';
   $handler->display->display_options['fields']['status']['table'] = 'cps_changeset';
   $handler->display->display_options['fields']['status']['field'] = 'status';
-  /* Field: Changeset: Changes */
+  /* Field: Site version: Changes */
   $handler->display->display_options['fields']['change_count']['id'] = 'change_count';
   $handler->display->display_options['fields']['change_count']['table'] = 'views_entity_cps_changeset';
   $handler->display->display_options['fields']['change_count']['field'] = 'change_count';
-  /* Field: Changeset: Operations */
+  /* Field: Site version: Operations */
   $handler->display->display_options['fields']['operations']['id'] = 'operations';
   $handler->display->display_options['fields']['operations']['table'] = 'views_entity_cps_changeset';
   $handler->display->display_options['fields']['operations']['field'] = 'operations';
-  /* Filter criterion: Changeset: Name */
+  /* Filter criterion: Site version: Name */
   $handler->display->display_options['filters']['name']['id'] = 'name';
   $handler->display->display_options['filters']['name']['table'] = 'cps_changeset';
   $handler->display->display_options['filters']['name']['field'] = 'name';
@@ -150,21 +150,17 @@ function cps_views_default_views() {
   $handler->display->display_options['filters']['status_type']['value'] = array(
     'open' => 'open',
   );
-  /* Filter criterion: Changeset: Changeset ID */
+  /* Filter criterion: Site version: Changeset ID */
   $handler->display->display_options['filters']['changeset_id']['id'] = 'changeset_id';
   $handler->display->display_options['filters']['changeset_id']['table'] = 'cps_changeset';
   $handler->display->display_options['filters']['changeset_id']['field'] = 'changeset_id';
   $handler->display->display_options['filters']['changeset_id']['operator'] = '!=';
   $handler->display->display_options['filters']['changeset_id']['value'] = 'published';
   $handler->display->display_options['filters']['changeset_id']['group'] = 1;
-  /* Filter criterion: Changeset: Status */
+  /* Filter criterion: Site version: Status */
   $handler->display->display_options['filters']['status_1']['id'] = 'status_1';
   $handler->display->display_options['filters']['status_1']['table'] = 'cps_changeset';
   $handler->display->display_options['filters']['status_1']['field'] = 'status';
-  $handler->display->display_options['filters']['status_1']['value'] = array(
-    'unpublished' => 'unpublished',
-    'review' => 'review',
-  );
   $handler->display->display_options['filters']['status_1']['group'] = 1;
   $handler->display->display_options['filters']['status_1']['exposed'] = TRUE;
   $handler->display->display_options['filters']['status_1']['expose']['operator_id'] = 'status_1_op';
@@ -174,11 +170,9 @@ function cps_views_default_views() {
   $handler->display->display_options['filters']['status_1']['expose']['remember_roles'] = array(
     2 => '2',
     1 => 0,
-    4 => 0,
     5 => 0,
-    3 => 0,
   );
-  $handler->display->display_options['filters']['status_1']['expose']['reduce'] = TRUE;
+  $handler->display->display_options['filters']['status_1']['expose']['type'] = 'open';
   /* Filter criterion: User: Current */
   $handler->display->display_options['filters']['uid_current']['id'] = 'uid_current';
   $handler->display->display_options['filters']['uid_current']['table'] = 'users';
