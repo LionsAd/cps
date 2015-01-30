@@ -461,7 +461,7 @@ function cps_update_7103() {
  */
 function cps_update_7104() {
   db_update('cps_entity')
-    ->condition('published', 1, '<>')
+    ->isNull('published')
     ->fields(array('published' => 0))
     ->execute();
   db_drop_index('cps_entity', 'published_changeset_id');
@@ -475,7 +475,7 @@ function cps_update_7104() {
   );
   $indexes = array(
     'indexes' => array(
-      'published_changeset_id', array('published', 'changeset_id'),
+      'published_changeset_id' => array('published', 'changeset_id'),
     ),
   );
   db_change_field('cps_entity', 'published', 'published', $field, $indexes);
