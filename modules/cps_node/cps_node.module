@@ -20,8 +20,6 @@ function cps_node_entity_info_alter(&$info) {
  * Implements hook_menu_alter().
  */
 function cps_node_menu_alter(&$items) {
-  // Disable access to the revisions page entirely.
-  // @todo diff module is messing this up.
   $items['node/%node/revisions']['access callback'] = FALSE;
 
   // And add our history page in its stead.
@@ -41,14 +39,6 @@ function cps_node_menu_alter(&$items) {
  * Implements hook_node_access().
  */
 function cps_node_node_access($node, $op, $account) {
-  // Special check for unpublished content:
-  // No node content with status 0 (unpublished) should be visible
-  // when viewing the published changeset.
-  $changeset = cps_get_current_changeset(TRUE);
-  if ($changeset == CPS_PUBLISHED_CHANGESET && is_object($node) && $node->status == NODE_NOT_PUBLISHED) {
-    return NODE_ACCESS_DENY;
-  }
-
   if (!cps_can_edit_entities($op, 'node', $node)) {
     return NODE_ACCESS_DENY;
   }
@@ -93,9 +83,8 @@ function cps_node_admin_paths() {
  *  Implements hook_module_implements_alter().
  */
 function cps_node_module_implements_alter(&$implementations, $hook) {
-  if (isset($implementations['cps_node']) && ($hook == 'query_alter')) {
-    // Move CPS's query alter after entity reference's so we can remove the
-    // checks for published status.
+  if (isset($implementations['cps_node']) && (in_array($hook, array('query_alter', 'menu_alter')))) {
+    // Move these last so they correctly override others.
     $group = $implementations['cps_node'];
     unset($implementations['cps_node']);
     $implementations['cps_node'] = $group;
