@@ -6,6 +6,66 @@
  */
 
 /**
+ * Implements hook_query_alter().
+ */
+function cps_query_alter(QueryAlterableInterface $query) {
+  // No need to alter if there's no active changeset.
+  $changeset_id = cps_get_current_changeset();
+  if ($changeset_id == CPS_PUBLISHED_CHANGESET) {
+    return;
+  }
+
+  // The tag is per-entity-type, so need to consult entity info.
+  $types = cps_get_supported();
+  foreach ($types as $entity_type) {
+    if ($query->hasTag($entity_type . '_load_multiple')) {
+      // Don't load the changeset before here, since that could lead to infinite
+      // recursion - changesets are entities but will never be CPS enabled.
+      // However now we're here, protect against invalid changeset IDs.
+      $changeset_id = cps_get_current_changeset(TRUE);
+      if ($changeset_id == CPS_PUBLISHED_CHANGESET) {
+        return;
+      }
+      $changeset = cps_changeset_load($changeset_id);
+      $info = entity_get_info($entity_type);
+      $entity_id_key = $info['entity keys']['id'];
+      $revision_id_key = $info['entity keys']['revision'];
+      $entity_revision_table = $info['revision table'];
+      $conditions =& $query->conditions();
+
+      // Every condition that's on the base table, needs to be on the revision
+      // table.
+      $add_join = FALSE;
+      $table_alias = 'cps_revision';
+      foreach ($conditions as &$condition) {
+        if (is_array($condition)) {
+          // If there's a condition on the revision key, don't need to alter at
+          // all.
+          if ($condition['field'] == 'revision.' . $revision_id_key) {
+            return;
+          }
+          // Only alter conditions on the base table, and only if they aren't on
+          // the entity ID key.
+          if (strpos($condition['field'], 'base.') === 0 && $condition['field'] != 'base.' . $entity_id_key) {
+            $add_join = TRUE;
+            $condition['field'] = str_replace('base.', $table_alias . '.', $condition['field']);
+          }
+        }
+      }
+      if ($add_join) {
+        // If the changeset has been published, we INNER join to exclude content
+        // that did not exist when the changeset was published. If it has not, we
+        // LEFT join so we can properly include live content along with the
+        // changeset.
+        $join_type = $changeset->published ? 'INNER' : 'LEFT';
+        $query->addJoin($join_type, 'cps_entity', 'cps_entity', "cps_entity.entity_type = '$entity_type' AND cps_entity.entity_id = base.$entity_id_key AND cps_entity.changeset_id = '$changeset_id'");
+        $query->join($entity_revision_table, $table_alias, "$table_alias.$revision_id_key = COALESCE(cps_entity.revision_id, base.$revision_id_key)");
+      }
+    }
+  }
+}
+
+/**
  * Implements hook_entity_query_alter().
  *
  * @param $query
