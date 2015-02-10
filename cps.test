@@ -131,7 +131,7 @@ class CpsTest extends CpsWebTestCase {
 
     // Create a second changeset.
     $values = array(
-      'naame' => $this->randomName(),
+      'name' => $this->randomName(),
       'uid' => $account->uid,
     );
     $changeset2 = cps_changeset_create($values);
@@ -148,14 +148,27 @@ class CpsTest extends CpsWebTestCase {
     $node = node_load($node->nid);
     $this->assertTrue($node->status);
     $this->assertEqual($node->title, 'Test second changeset');
+
+    // Ensure loading with conditions works, this requires the entity static
+    // cache to be reset since conditions are checked against that too.
+    $nodes = node_load_multiple(FALSE, array('title' => $node->title, 'status' => 1), TRUE);
+    $this->assertTrue($nodes);
+
     cps_override_changeset($changeset->changeset_id);
     $node = node_load($node->nid);
     $this->assertTrue($node->status);
     $this->assertEqual($node->title, 'Test first changeset');
+    entity_get_controller('node')->resetCache();
+    $nodes = node_load_multiple(FALSE, array('title' => $node->title, 'status' => 1), TRUE);
+    $this->assertTrue($nodes);
+
     cps_override_changeset(CPS_PUBLISHED_CHANGESET);
     $node = node_load($node->nid);
     $this->assertEqual($node->title, 'Test');
     $this->assertFalse($node->status);
+    entity_get_controller('node')->resetCache();
+    $nodes = node_load_multiple(FALSE, array('title' => $node->title, 'status' => 1), TRUE);
+    $this->assertFalse($nodes);
 
     // Set the current changeset to an unrelated changeset for publishing, tests
     // a bug where items were published with data from the current changeset,
