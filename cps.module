@@ -202,7 +202,6 @@ function cps_menu() {
     'weight' => -10,
   );
 
-
   $items['admin/structure/changesets/%cps_changeset/publish'] = array(
     'title' => 'Publish',
     'type' => MENU_LOCAL_ACTION,
@@ -915,38 +914,45 @@ function cps_remove_untracked_entities($changeset_id) {
  *   The number of entities to process.
  */
 function cps_add_untracked_entities($changeset_id, $entity_type, $start = 0, $limit = 100) {
+
+  // Ensure the EntityFieldQuery here does not get altered.
+  cps_override_changeset(CPS_PUBLISHED_CHANGESET);
   $tracked = cps_get_tracked_entities($changeset_id);
-  $entity_query = new EntityFieldQuery();
   $info = entity_get_info($entity_type);
+
+  $entity_query = new EntityFieldQuery();
   if (!empty($tracked[$entity_type])) {
-    $results = $entity_query
-      ->entityCondition('entity_type', $entity_type)
-      ->entityCondition('entity_id', $tracked[$entity_type], 'NOT IN')
-      ->entityOrderBy('entity_id', 'ASC')
-      ->range($start, $limit)
-      ->execute();
-    if (!empty($results[$entity_type])) {
-      $query = db_insert('cps_entity')
-        ->fields(array(
-          'entity_type',
-          'entity_id',
-          'revision_id',
-          'changeset_id',
-          'published',
-        ));
-      foreach ($results[$type] as $entity) {
-        $query->values(array(
-          'entity_type' => $entity_type,
-          'entity_id' => $entity->{$info['entity keys']['id']},
-          'revision_id' => $entity->{$info['entity keys']['revision']},
-          'changeset_id' => $changeset_id,
-          'published' => 1,
-        ));
-      }
-      $query->execute();
-      // Return the last touched entity ID.
-      return max(array_keys($results[$entity_type]));
+    $entity_query->entityCondition('entity_id', $tracked[$entity_type], 'NOT IN');
+  }
+  $results = $entity_query
+    ->entityCondition('entity_type', $entity_type)
+    ->entityOrderBy('entity_id', 'ASC')
+    ->range($start, $limit)
+    ->execute();
+
+  // Reset the changeset
+  cps_override_changeset(NULL);
+  if (!empty($results[$entity_type])) {
+    $query = db_insert('cps_entity')
+      ->fields(array(
+        'entity_type',
+        'entity_id',
+        'revision_id',
+        'changeset_id',
+        'published',
+      ));
+    foreach ($results[$entity_type] as $entity) {
+      $query->values(array(
+        'entity_type' => $entity_type,
+        'entity_id' => $entity->{$info['entity keys']['id']},
+        'revision_id' => $entity->{$info['entity keys']['revision']},
+        'changeset_id' => $changeset_id,
+        'published' => 1,
+      ));
     }
+    $query->execute();
+    // Return the last touched entity ID.
+    return max(array_keys($results[$entity_type]));
   }
 }
 
