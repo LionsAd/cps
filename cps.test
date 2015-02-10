@@ -158,7 +158,6 @@ class CpsTest extends CpsWebTestCase {
     $node = node_load($node->nid);
     $this->assertTrue($node->status);
     $this->assertEqual($node->title, 'Test first changeset');
-    entity_get_controller('node')->resetCache();
     $nodes = node_load_multiple(FALSE, array('title' => $node->title, 'status' => 1), TRUE);
     $this->assertTrue($nodes);
 
@@ -166,7 +165,6 @@ class CpsTest extends CpsWebTestCase {
     $node = node_load($node->nid);
     $this->assertEqual($node->title, 'Test');
     $this->assertFalse($node->status);
-    entity_get_controller('node')->resetCache();
     $nodes = node_load_multiple(FALSE, array('title' => $node->title, 'status' => 1), TRUE);
     $this->assertFalse($nodes);
 
