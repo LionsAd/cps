@@ -871,7 +871,7 @@ function cps_unpublish_changeset_entities($changeset_id, $previous_changeset_id)
           'entity_type' => $entity_type,
           'entity_id' => $entity_id,
           'changeset_id' => $changeset_id,
-        ));
+        ))->fetchField();
         if ($vid) {
           cps_make_revision_published($entity_type, $entity_id, $previous_changeset_id);
         }
