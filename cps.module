@@ -1920,3 +1920,12 @@ function cps_changeset_get_operations(CPSChangeset $changeset) {
   drupal_alter('cps_changeset_operations', $operations, $changeset);
   return $operations;
 }
+
+/**
+ * Convenience function to test whether the current changeset is active.
+ *
+ * @return bool
+ */
+function cps_is_current_changeset_active() {
+  return cps_get_current_changeset(TRUE) != CPS_PUBLISHED_CHANGESET;
+}
