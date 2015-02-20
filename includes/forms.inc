@@ -254,16 +254,16 @@ function cps_changeset_publish_batch_update($changeset, $entity_type, &$context)
   }
 
   $limit = 100;
-  $last = cps_add_untracked_entities($changeset_id, $entity_type, $context['sandbox']['current_item'], $limit);
+  $count = cps_add_untracked_entities($changeset_id, $entity_type, $context['sandbox']['current_item'], $limit);
 
   $context['results']['changeset'] = $changeset;
 
-  if (!$last) {
+  if (!$count) {
     $context['finished'] = TRUE;
   }
   else {
     $context['finished'] = FALSE;
-    $context['sandbox']['current_item'] = $last + 1;
+    $context['sandbox']['current_item'] = $context['sandbox']['current_item'] + $count;
   }
 }
 

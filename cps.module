@@ -951,8 +951,8 @@ function cps_add_untracked_entities($changeset_id, $entity_type, $start = 0, $li
       ));
     }
     $query->execute();
-    // Return the last touched entity ID.
-    return max(array_keys($results[$entity_type]));
+    // Return the count of entities that were updated.
+    return min($limit, count($results[$entity_type]));
   }
 }
 
