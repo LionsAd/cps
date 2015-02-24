@@ -1939,5 +1939,5 @@ function cps_is_current_changeset_active() {
  */
 function cps_changeset_view_site_access($changeset) {
   $current_changeset_id = cps_get_current_changeset();
-  return $current_changeset_id != $changeset->changeset_id && $changeset && cps_changeset_access('view', $changeset);
+  return $changeset && $current_changeset_id != $changeset->changeset_id && cps_changeset_access('view', $changeset);
 }
