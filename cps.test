@@ -115,7 +115,6 @@ class CpsTest extends CpsWebTestCase {
     $node = node_load($node->nid);
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 1, $changeset->changeset_id));
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 2, 'initial'));
-    debug(db_query('SELECT nid, vid FROM {node_revision}')->fetchAll());
     // Saving the node will increment the revision ID for the draft revision in
     // this changeset.
     // The revision ID of the 'initial' revision doesn't need to change - it's
@@ -123,8 +122,6 @@ class CpsTest extends CpsWebTestCase {
     $node->title = 'Test first changeset';
     $node->is_draft_revision = TRUE;
     node_save($node);
-    debug(db_query('SELECT nid, vid FROM {node_revision}')->fetchAll());
-    debug($this->getChangesetRecords('node', $node->nid));
 
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 3, $changeset->changeset_id));
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 2, 'initial'));
@@ -160,6 +157,12 @@ class CpsTest extends CpsWebTestCase {
     $this->assertEqual($node->title, 'Test first changeset');
     $nodes = node_load_multiple(FALSE, array('title' => $node->title, 'status' => 1), TRUE);
     $this->assertTrue($nodes);
+
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'node');
+    $query->propertyCondition('title', $node->title);
+    $result = $query->execute();
+    $this->assertEqual($result['node'][$node->nid]->vid, $node->vid);
 
     cps_override_changeset(CPS_PUBLISHED_CHANGESET);
     $node = node_load($node->nid);

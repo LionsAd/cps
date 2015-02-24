@@ -123,6 +123,7 @@ function cps_field_sql_storage_field_storage_query(EntityFieldQuery $query) {
   $revision_id_key = $entity_info['entity keys']['revision'];
   $bundle_key = $entity_info['entity keys']['bundle'];
   $entity_base_table = $entity_info['base table'];
+  $entity_revision_table = $entity_info['revision table'];
 
   // Unlike the original, we always use the entity table as the base table.
   // We can do this because we have verified that there is an entity type
@@ -136,23 +137,30 @@ function cps_field_sql_storage_field_storage_query(EntityFieldQuery $query) {
     $select_query->addTag('entity_field_access');
   }
 
+  // If the changeset has been published, we INNER join to exclude content that did not exist when
+  // the changeset was published. If it has not, we LEFT join so we can properly include live
+  // content along with the changeset.
+  $join_type = $changeset->published ? 'INNER' : 'LEFT';
+  $select_query->addJoin($join_type, 'cps_entity', 'cps_entity', "cps_entity.entity_type = '$entity_type' AND cps_entity.entity_id = $entity_base_table.$entity_id_key AND cps_entity.changeset_id = '$changeset_id'");
+
+  // Add a join on the revision table, so that the stub revision ID returned in
+  // results is the one in the changeset, not whatever is in the base table.
+  $entity_revision_table = $entity_info['revision table'];
+  $select_query->join($entity_revision_table, $entity_revision_table, "$entity_revision_table.$revision_id_key = COALESCE(cps_entity.revision_id, $entity_base_table.$revision_id_key)");
+
   // This adds all of the base fields that are expected so that it can create
   // a pseudo entity when reading the results.
   $select_query->addMetaData('base_table', $entity_base_table);
+  $select_query->addMetaData('revision_table', $entity_revision_table);
   $select_query->addExpression("'$entity_type'", 'entity_type');
   $select_query->addField($entity_base_table, $entity_id_key, 'entity_id');
-  $select_query->addField($entity_base_table, $revision_id_key, 'revision_id');
+  $select_query->addField($entity_revision_table, $revision_id_key, 'revision_id');
   // The bundle key is optional in the case where the entity type only has one
   // bundle.
   if ($bundle_key) {
     $select_query->addField($entity_base_table, $bundle_key, 'bundle');
   }
 
-  // If the changeset has been published, we INNER join to exclude content that did not exist when
-  // the changeset was published. If it has not, we LEFT join so we can properly include live
-  // content along with the changeset.
-  $join_type = $changeset->published ? 'INNER' : 'LEFT';
-  $select_query->addJoin($join_type, 'cps_entity', 'cps_entity', "cps_entity.entity_type = '$entity_type' AND cps_entity.entity_id = $entity_base_table.$entity_id_key AND cps_entity.changeset_id = '$changeset_id'");
 
   $table_aliases = array();
   // Add tables for the fields used.
@@ -198,19 +206,13 @@ function cps_field_sql_storage_field_storage_query(EntityFieldQuery $query) {
   }
 
   if ($query->propertyConditions || $has_property_order) {
-    // We always add the revision table if we have a property order or condition. It is
-    // actually possible the revision table will be added unnecessarily but it is
-    // difficult to check prior to adding the table without accidentally adding
-    // the table multiple times.
-    $revision_table = $entity_info['revision table'];
-    $select_query->join($revision_table, $revision_table, "$revision_table.$revision_id_key = COALESCE(cps_entity.revision_id, $entity_base_table.$revision_id_key)");
     $query->entityConditions['entity_type']['operator'] = '=';
 
     // Check to see if the property exists on the revision table. If it does, use that instead
     // so that we can properly see the revision. If not, default to the entity base table.
     foreach ($query->propertyConditions as $property_condition) {
       if (in_array($property_condition['column'], $entity_info['schema_fields_sql']['revision table'])) {
-        $query->addCondition($select_query, "$revision_table." . $property_condition['column'], $property_condition);
+        $query->addCondition($select_query, "$entity_revision_table." . $property_condition['column'], $property_condition);
       }
       else {
         $query->addCondition($select_query, "$entity_base_table." . $property_condition['column'], $property_condition);
@@ -267,7 +269,7 @@ function cps_field_sql_storage_field_storage_query(EntityFieldQuery $query) {
     elseif ($order['type'] == 'property') {
       // Like property conditions above, check if it is in the revision table.
       if (in_array($order['specifier'], $entity_info['schema_fields_sql']['revision table'])) {
-        $select_query->orderBy("$revision_table." . $order['specifier'], $order['direction']);
+        $select_query->orderBy("$entity_revision_table." . $order['specifier'], $order['direction']);
       }
       else {
         $select_query->orderBy("$entity_base_table." . $order['specifier'], $order['direction']);
