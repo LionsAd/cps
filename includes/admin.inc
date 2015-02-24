@@ -434,36 +434,119 @@ function cps_revision_list($entity, $entity_type) {
 }
 
 /**
- * Page callback to show revisions for an entity.
+ * Page callback to render a revisions page.
+ *
+ * This can be added via hook_menu by any module implementing CPS support
+ * for an entity to override the revisions page and show a CPS friendly
+ * version of it.
+ *
+ * @param string $entity_type
+ *   The entity type of the entity.
+ * @param object $entity
+ *   The entity to display revisions for.
+ *
+ * @return array
+ *   A Drupal renderable array of the page.
  */
-function cps_revisions_page($entity, $entity_type) {
-  list($entity_id, $revision_id, $bundle) = entity_extract_ids($entity_type, $entity);
+function cps_revisions_page($entity_type, $entity) {
+  return drupal_get_form('cps_revisions_page_form', $entity_type, $entity);
+}
+
+/**
+ * Form callback to render a revisions page.
+ *
+ * This can be added via hook_menu by any module implementing CPS support
+ * for an entity to override the revisions page and show a CPS friendly
+ * version of it.
+ *
+ * @param array $form
+ *   The starting form provided by FAPI.
+ * @param array $form_state
+ *   The form state array reference.
+ * @param string $entity_type
+ *   The entity type of the entity.
+ * @param object $entity
+ *   The entity to display revisions for.
+ *
+ * @return array
+ *   A Drupal renderable array of the page.
+ */
+function cps_revisions_page_form($form, &$form_state, $entity_type, $entity) {
+  list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
 
   $live_revision_id = isset($entity->published_revision_id) ? $entity->published_revision_id : $revision_id;
 
   $uri = entity_uri($entity_type, $entity);
+  $form_state['entity_uri'] = $uri['path'];
   drupal_set_title(t('History for %title', array('%title' => entity_label($entity_type, $entity))), PASS_THROUGH);
+
+  $form['entity_revisions_table'] = array(
+    'header' => array(
+      'site_version' => array(
+        '#markup' => t('Site version'),
+      ),
+      'author' => array(
+        '#markup' => t('Author'),
+      ),
+      'status' => array(
+        '#markup' => t('Status'),
+      ),
+      'diff_left' => array(),
+      'diff_right' => array(),
+      'operations' => array(
+        '#markup' => t('Operations'),
+      ),
+    ),
+  );
 
   $status_options = cps_changeset_get_state_labels();
   $changesets = cps_revision_list($entity, $entity_type);
 
-  $rows = array();
-  // System created entities might not have a live revision. If not,
-  // create a fake entry to inform the user.
-  if (empty($changesets)) {
-    $rows[] = array(
-      t('System created'),
-      t('System created'),
-      '<b>' . t('Live') . '</b>',
-      ''
-    );
+  // Find the changeset that contains the published revision. If it does
+  // not exist, find the most recent published changeset that contains
+  // the entity.
+  if (empty($changesets[$live_revision_id])) {
+    $live_changeset_id = db_query("SELECT e.changeset_id FROM {cps_entity} e INNER JOIN {cps_changeset} c ON c.changeset_id = e.changeset_id WHERE e.entity_type = :entity_type AND e.entity_id = :entity_id AND c.published IS NOT NULL ORDER BY c.published DESC LIMIT 1", array(':entity_id' => $entity_id, ':entity_type' => $entity_type))->fetchField();
+    if ($live_changeset_id) {
+      $changesets = array($live_revision_id => cps_changeset_load($live_changeset_id)) + $changesets;
+    }
+    else {
+      $form['entity_revisions_table']['body']['published'] = array(
+        'site_version' => array(
+          '#markup' => t('System created')
+        ),
+        'author' => array(
+          '#markup' => t('System created')
+        ),
+        'status' => array(
+          '#markup' => '<b>' . t('Live') . '</b>'
+        ),
+        'diff_left' => array(
+          '#type' => 'radio',
+          '#name' => 'diff_left',
+          '#return_value' => 'published',
+          '#access' => module_exists('diff'),
+        ),
+        'diff_right' => array(
+          '#type' => 'radio',
+          '#name' => 'diff_right',
+          '#return_value' => 'published',
+          '#access' => module_exists('diff'),
+        ),
+        'operations' => array(),
+      );
+    }
   }
 
   foreach ($changesets as $changeset_revision_id => $changeset) {
     $row = array();
     $changeset_uri = $changeset->uri();
-    $row[] = l($changeset->label(), $changeset_uri['path']);
-    $row[] = format_username($changeset);
+    $row['site_version'] = array(
+      '#markup' => l($changeset->label(), $changeset_uri['path'])
+    );
+    $row['author'] = array(
+      '#markup' => format_username($changeset)
+    );
 
     if ($changeset_revision_id == $live_revision_id) {
       $status = '<b>' . t('Live') . '</b>';
@@ -476,10 +559,25 @@ function cps_revisions_page($entity, $entity_type) {
       $status .= '<br/>' . t('Published on @date', array('@date' => format_date($changeset->published)));
     }
 
-    $row[] = $status;
+    $row['status'] = array(
+      '#markup' => $status,
+    );
 
-    $operations = array(
-      '#type' => 'container',
+    $row['diff_left'] = array(
+      '#type' => 'radio',
+      '#name' => 'diff_left',
+      '#return_value' => $changeset->changeset_id,
+      '#access' => module_exists('diff'),
+    );
+
+    $row['diff_right'] = array(
+      '#type' => 'radio',
+      '#name' => 'diff_right',
+      '#return_value' => $changeset->changeset_id,
+      '#access' => module_exists('diff'),
+    );
+
+    $row['operations'] = array(
       '#attributes' => array('class' => 'cps-changeset-operations'),
       'site' => array(
         '#theme' => 'link',
@@ -494,21 +592,154 @@ function cps_revisions_page($entity, $entity_type) {
       ),
     );
 
-    $row[] = drupal_render($operations);
-
-    $rows[] = $row;
+    $form['entity_revisions_table']['body'][$changeset->changeset_id] = $row;
   }
 
-  $header = array(t('Site version'), t('Author'), t('Status'), t('Operations'));
+  // Now go through and add td/th markup to the header and body. This would
+  // be way cooler if we had #type => 'table', '#type' => 'table_header',
+  // '#type' => 'table_body' and '#type' => 'table_cell' but alas. This fakes
+  // that a bit.
+  $attributes = isset($form['entity_revisions_table']['#attributes']) ? $form['entity_revisions_table']['#attributes'] : array();
+  $form['entity_revisions_table']['#prefix'] = '<table' . drupal_attributes($attributes) . '>';
+  $form['entity_revisions_table']['#suffix'] = '</table>';
 
-  $build['entity_revisions_table'] = array(
-    '#theme' => 'table',
-    '#rows' => $rows,
-    '#header' => $header,
+  foreach ($form['entity_revisions_table']['header'] as $key => &$data) {
+    $attributes = isset($data['#attributes']) ? $data['#attributes'] : array();
+    $data['#prefix'] = '<th' . drupal_attributes($attributes) . '>';
+    $data['#suffix'] = '</th>';
+  }
+
+  $attributes = isset($form['entity_revisions_table']['header']['#attributes']) ? $form['entity_revisions_table']['header']['#attributes'] : array();
+  $form['entity_revisions_table']['header']['#prefix'] = '<thead' . drupal_attributes($attributes) . '><tr>';
+  $form['entity_revisions_table']['header']['#suffix'] = '</tr></thead>';
+
+  $flip = array('even' => 'odd', 'odd' => 'even');
+  $class = 'even';
+  foreach ($form['entity_revisions_table']['body'] as $row_id => &$row) {
+    foreach ($row as $key => &$data) {
+      $attributes = isset($data['#attributes']) ? $data['#attributes'] : array();
+      $data['#prefix'] = '<td' . drupal_attributes($attributes) . '>';
+      $data['#suffix'] = '</td>';
+    }
+    $attributes = isset($row['#attributes']) ? $row['#attributes'] : array();
+    $class = $flip[$class];
+    $attributes['class'][] = $class;
+    $row['#prefix'] = '<tr' . drupal_attributes($attributes) . '>';
+    $row['#suffix'] = '</tr>';
+  }
+
+  $attributes = isset($form['entity_revisions_table']['body']['#attributes']) ? $form['entity_revisions_table']['body']['#attributes'] : array();
+  $form['entity_revisions_table']['body']['#prefix'] = '<tbody' . drupal_attributes($attributes) . '>';
+  $form['entity_revisions_table']['body']['#suffix'] = '</tbody>';
+
+  $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Compare'),
+    '#access' => module_exists('diff'),
   );
 
   // Attach the pager theme.
-  $build['entity_revisions_table_pager'] = array('#theme' => 'pager');
+  $form['entity_revisions_table_pager'] = array('#theme' => 'pager');
+
+  return $form;
+}
+
+/**
+ * Submit code for input form to select two revisions.
+ */
+function cps_revisions_page_form_validate($form, &$form_state) {
+  // The ids are ordered so the old revision is always on the left.
+  $left = $form_state['input']['diff_left'];
+  $right = $form_state['input']['diff_right'];
+  if ($left == $right || !$left || !$right) {
+    form_set_error('diff', t('Select different revisions to compare.'));
+  }
+}
+
+/**
+ * Form submit callback for the revisions page.
+ *
+ * @param array $form
+ *   The form array.
+ * @param array $form_state
+ *   The form state array.
+ */
+function cps_revisions_page_form_submit($form, &$form_state) {
+  $form_state['redirect'] = $form_state['entity_uri'] . '/history/' . $form_state['input']['diff_left'] . '/' . $form_state['input']['diff_right'];
+}
+
+/**
+ * Page callback to render a diff between two site versions.
+ *`
+ * @param string $entity_type
+ *   The entity type.
+ * @param object $entity
+ *   The entity.
+ * @param CPSChangeset $old_changeset
+ *   The left (old) changeset.
+ * @param CPSChangeset $new_changeset
+ *   The right (new) changeset.
+ * @param (optional) $state
+ *   The state to view.
+ *
+ * @return array
+ *   A Drupal render array.
+ */
+function cps_diff_page($entity_type, $entity, $old_changeset, $new_changeset, $state = NULL) {
+  $build = array();
+
+  $default_state = variable_get('diff_default_state_node', 'raw');
+  if (empty($state)) {
+    $state = $default_state;
+  }
+  $state = str_replace('-', '_', $state);
+  if (!array_key_exists($state, diff_available_states())) {
+    $state = $default_state;
+  }
+
+  // Copied from diff_diffs_show()
+  $links = array();
+  $uri = entity_uri($entity_type, $entity);
+  $history_uri = $uri['path'] . '/history';
+  foreach (diff_available_states($entity_type) as $alternative_state => $label) {
+    $links[$alternative_state] = array(
+      'title' => $label,
+      'href' => "$history_uri/{$old_changeset->changeset_id}/{$new_changeset->changeset_id}" . ($alternative_state == $default_state ? '' : '/' . str_replace('_', '-', $alternative_state)),
+    );
+  }
+
+  if (count($links) > 1) {
+    $build['state_links'] = array(
+      '#markup' => theme('links', array(
+          'links' => $links,
+          'attributes' => array('class' => array('links', 'inline')))
+      ),
+    );
+  }
+
+  list($entity_id) = entity_extract_ids($entity_type, $entity);
+
+  // Load the left side.
+  cps_override_changeset($old_changeset->changeset_id);
+  $old_entity = entity_load_single($entity_type, $entity_id);
+
+  // Load the right side.
+  cps_override_changeset($new_changeset->changeset_id);
+  $new_entity = entity_load_single($entity_type, $entity_id);
+
+  // Put the changeset back the way we found it.
+  cps_override_changeset(NULL);
+
+  ctools_include('diff', 'cps');
+  $build['table'] = cps_render_diff($entity_type, $old_entity, $new_entity, $state);
+
+  // Generate table header (date, username, log message).
+  $old_header = _cps_diff_header($old_changeset);
+  $new_header = _cps_diff_header($new_changeset);
+
+  // Add in a header that cps_diff() doesn't normally.
+  $build['table']['#header'] = _diff_default_header($old_header, $new_header);
 
   return $build;
 }
+

@@ -328,6 +328,7 @@ class CPSChangesetController extends EntityAPIController {
       );
 
       foreach ($changed_entities as $entity_id => $change) {
+        ctools_include('diff', 'cps');
         $build['changes'][$entity_type][$entity_id] = cps_render_changed_entity($entity_type, $change, $entity);
       }
     }

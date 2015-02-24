@@ -75,9 +75,21 @@ function cps_file_entity_menu() {
 
   $items['file/%file/history'] = array(
     'title' => 'History',
-    'page callback' => 'cps_show_revisions_page',
+    'page callback' => 'cps_revisions_page',
     'page arguments' => array('file', 1),
     'access arguments' => array('create files'),
+    'file' => 'includes/admin.inc',
+    'file path' => drupal_get_path('module', 'cps'),
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  $items['file/%file/history/%cps_changeset_optional/%cps_changeset_optional'] = array(
+    'title' => 'Compare revisions',
+    'page callback' => 'cps_diff_page',
+    'page arguments' => array('file', 1, 3, 4),
+    'access arguments' => array('create files'),
+    'file' => 'includes/admin.inc',
+    'file path' => drupal_get_path('module', 'cps'),
     'type' => MENU_LOCAL_TASK,
   );
 
@@ -90,6 +102,7 @@ function cps_file_entity_menu() {
 function cps_file_entity_admin_paths() {
   $paths = array(
     'file/*/history' => TRUE,
+    'file/*/history/*' => TRUE,
   );
   return $paths;
 }
