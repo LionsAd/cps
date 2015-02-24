@@ -196,8 +196,8 @@ function cps_menu() {
     'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
     'page callback' => 'cps_changeset_view_site_page',
     'page arguments' => array(3),
-    'access callback' => 'entity_access',
-    'access arguments' => array('view', 'cps_changeset', 3),
+    'access callback' => 'cps_changeset_view_site_access',
+    'access arguments' => array(3),
     'file' => 'includes/admin.inc',
     'weight' => -10,
   );
@@ -1928,4 +1928,16 @@ function cps_changeset_get_operations(CPSChangeset $changeset) {
  */
 function cps_is_current_changeset_active() {
   return cps_get_current_changeset(TRUE) != CPS_PUBLISHED_CHANGESET;
+}
+
+/**
+ * Determine if the 'switch to this site version' action should be visible.
+ *
+ * @param CPSChangeset $changeset
+ *
+ * @return bool
+ */
+function cps_changeset_view_site_access($changeset) {
+  $current_changeset_id = cps_get_current_changeset();
+  return $current_changeset_id != $changeset->changeset_id && $changeset && cps_changeset_access('view', $changeset);
 }
