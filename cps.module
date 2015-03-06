@@ -89,7 +89,7 @@ function cps_permission() {
     ),
     'edit all changesets' => array(
       'title' => t('Edit all site versions'),
-      'description' => t('Can edit site versions owned by other people.'),
+      'description' => t('Can edit and delete site versions owned by other people.'),
     ),
     'view changesets' => array(
       'title' => t('View site versions'),
