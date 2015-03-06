@@ -89,7 +89,7 @@ function cps_permission() {
     ),
     'edit all changesets' => array(
       'title' => t('Edit all site versions'),
-      'description' => t('Can edit and delete site versions owned by other people.'),
+      'description' => t('Can edit site versions owned by other people.'),
     ),
     'view changesets' => array(
       'title' => t('View site versions'),
@@ -1261,31 +1261,6 @@ function cps_changeset_get_state_labels() {
 }
 
 /**
- * Page callback to render a revisions page.
- *
- * This can be added via hook_menu by any module implementing CPS support
- * for an entity to override the revisions page and show a CPS friendly
- * version of it.
- *
- * @param string $entity_type
- *   The entity type of the entity.
- * @param object $entity
- *   The entity to display revisions for.
- *
- * @return array
- *   A Drupal renderable array of the page.
- */
-function cps_show_revisions_page($entity_type, $entity) {
-  // @todo: no real need for a wrapper here.
-  if (cps_is_supported($entity_type)) {
-    require_once __DIR__ . '/includes/admin.inc';
-    return cps_revisions_page($entity, $entity_type);
-  }
-
-  return array();
-}
-
-/**
  * Provide a warning message if the entity has unpublished changes in another changeset.
  *
  * @param object $entity
@@ -1320,325 +1295,6 @@ function cps_entity_in_published_changeset($entity_type, $entity) {
   $result = db_query('SELECT 1 FROM {cps_entity} ce INNER JOIN {cps_changeset} cc ON ce.changeset_id = cc.changeset_id AND cc.status IN (:published) WHERE ce.entity_type = :type AND ce.entity_id = :id', array(':published' => array(CPS_ARCHIVED_STATUS, 'published'), ':type' => $entity_type, ':id' => $id))->fetchField();
 
   return $result;
-}
-
-
-/**
- * Creates an array of rows which represent the difference between nodes.
- *
- * This function relies on the diff module. It is largely copied from
- * _diff_body_rows() which is unnecessarily node specific.
- *
- * @param string $entity_type
- *   The entity type to compare.
- * @param object $old
- *   Node for comparison which will be displayed on the left side.
- * @param object $new
- *   Node for comparison which will be displayed on the right side.
- * @param string $state
- *   The state to render for the diff.
- *
- * @return array
- *   The rows of the diff.
- */
-function cps_diff($entity_type, $old, $new, $state = 'raw') {
-  if (!module_exists('diff')) {
-    return FALSE;
-  }
-
-  // This is an unique index only, so no need for drupal_static().
-  static $table_row_counter = 0;
-
-  if ($theme = variable_get('diff_theme', 'default')) {
-    drupal_add_css(drupal_get_path('module', 'diff') . "/css/diff.{$theme}.css");
-  }
-  module_load_include('inc', 'diff', 'diff.pages');
-
-  $rows = array();
-  $any_visible_change = FALSE;
-
-  // Some special handling if the old version is the special unpublished
-  // live revision.
-
-  $is_new = !cps_entity_in_published_changeset($entity_type, $old);
-
-  if (!$is_new) {
-    $context = array(
-      'entity_type' => $entity_type,
-      'states' => array($state),
-      'view_mode' => 'diff_standard',
-    );
-
-    $diffs = diff_compare_entities($old, $new, $context);
-
-    // Track line numbers between multiple diffs.
-    $line_stats = array(
-      'counter' => array('x' => 0, 'y' => 0),
-      'offset' => array('x' => 0, 'y' => 0),
-    );
-
-    // Render diffs for each.
-    foreach ($diffs as $diff) {
-      $show_header = !empty($diff['#name']);
-      // These are field level settings.
-      if ($show_header && isset($diff['#settings']['show_header'])) {
-        $show_header = $show_header && $diff['#settings']['show_header'];
-      }
-
-      // Line counting and line header options.
-      if (empty($diff['#settings']['line_counter'])) {
-        $line_counter = FALSE;
-      }
-      else {
-        $line_counter = $diff['#settings']['line_counter'];
-      }
-      // Every call to 'line' resets the counters.
-      if ($line_counter) {
-        $line_stats['counter']['x'] = 0;
-        $line_stats['counter']['y'] = 0;
-        if ($line_counter == 'line' && 0) {
-          $line_stats['offset']['x'] = 0;
-          $line_stats['offset']['y'] = 0;
-        }
-        $line_stats_ref = $line_stats;
-      }
-      else {
-        $line_stats_ref = NULL;
-      }
-
-      list($old_content, $new_content) = diff_extract_state($diff, $state);
-      if ($diff_rows = diff_get_rows($old_content, $new_content, $line_counter && $line_counter != 'hidden', $line_stats_ref)) {
-        if ($line_counter && $line_counter != 'line') {
-          $line_stats['offset']['x'] += $line_stats_ref['counter']['x'];
-          $line_stats['offset']['y'] += $line_stats_ref['counter']['y'];
-        }
-        if ($show_header) {
-          $rows['diff-header-' . $table_row_counter++] = array(
-            array(
-              'data' => t('Changes to %name', array('%name' => $diff['#name'])),
-              'class' => 'diff-section-title',
-              'colspan' => 4,
-            ),
-          );
-        }
-        // To avoid passing counter to the Diff engine, index rows manually here
-        // to allow modules to interact with the table. i.e. no array_merge().
-        foreach ($diff_rows as $row) {
-          $rows['diff-row-' . $table_row_counter++] = $row;
-        }
-        $any_visible_change = TRUE;
-      }
-    }
-  }
-
-  if (!$any_visible_change) {
-    $rows['diff-empty-' . $table_row_counter++] = array(
-      array(
-        'data' => !$is_new ? t('No visible changes') : t('Newly created'),
-        'class' => 'diff-section-title',
-        'colspan' => 4,
-      ),
-    );
-    // @todo: revise this.
-    // Needed to keep safari happy.
-    $rows['diff-empty-' . $table_row_counter++] = array(
-      array('data' => ''),
-      array('data' => ''),
-      array('data' => ''),
-      array('data' => ''),
-    );
-  }
-
-  return $rows;
-}
-
-/**
- * Render a diff between two entities of the same type.
- *
- * @param string $entity_type
- *   The entity type to compare.
- * @param object $old
- *   Node for comparison which will be displayed on the left side.
- * @param object $new
- *   Node for comparison which will be displayed on the right side.
- * @param string $state
- *   The state to render for the diff.
- *
- * @return array
- *   An array suitable for drupal_render().
- */
-function cps_render_diff($entity_type, $old, $new, $state = 'raw') {
-  if (!module_exists('diff')) {
-    return array();
-  }
-
-  // cps_diff can be long if there's a LOT of content, so let's add some time.
-  drupal_set_time_limit(30);
-  $rows = cps_diff($entity_type, $old, $new, $state);
-  $header = array();
-
-  $build = array(
-    '#theme' => 'table__diff__standard',
-    '#header' => $header,
-    '#rows' => $rows,
-    '#attributes' => array('class' => array('diff')),
-    '#colgroups' => _diff_default_cols(),
-    '#sticky' => FALSE,
-    '#changes' => 0,
-  );
-
-  foreach ($rows as $key => $row) {
-    if (strpos($key, 'diff-row-') === 0) {
-      // The Diff module sometimes adds empty rows which are keyed like a
-      // change, but are not. Discount these.
-      // Rows representing an actual visible change should always have a '+'
-      // (which precedes the new content), a '-' (which precedes the removed
-      // content) or both. See DrupalDiffFormatter::addedLine() and
-      // DrupalDiffFormatter::deletedLine().
-      $empty_row = TRUE;
-      if (is_array($row)) {
-        foreach ($row as $element) {
-          if (is_array($element) && isset($element['data']) && in_array($element['data'], array('+', '-'))) {
-            $empty_row = FALSE;
-            break;
-          }
-        }
-      }
-      if (!$empty_row) {
-        $build['#changes']++;
-      }
-    }
-  }
-
-  return $build;
-}
-
-/**
- * Render a change into a changeset's entity view.
- *
- * @param string $entity_type
- *   The type of entity being rendered.
- * @param object $change
- *   The changed entity being rendered.
- * @param CPSChangeset $entity
- *   The changeset this is for.
- * @return array
- *   An array suitable for drupal_render().
- */
-function cps_render_changed_entity($entity_type, $change, $entity) {
-  list($entity_id, , $bundle) = entity_extract_ids($entity_type, $change);
-  $uri = entity_uri($entity_type, $change);
-  $changeset_uri = $entity->uri();
-
-  // Don't render diff for published changesets:
-  if (!$entity->published) {
-    // We can't actually trust $change->published_revision because it might have
-    // loaded incompletely, so let's load a fresh version.
-
-    // Make sure that CPS doesn't swap out the entity it loads!
-    cps_override_changeset(CPS_PUBLISHED_CHANGESET);
-    $original = entity_load_single($entity_type, $entity_id);
-    cps_override_changeset(NULL);
-
-    if (cps_entity_in_published_changeset($entity_type, $original)) {
-      $diff = cps_render_diff($entity_type, $original, $change);
-      if (!empty($diff['#changes'])) {
-        $title = format_plural($diff['#changes'], '1 change', '@count changes');
-      }
-      else {
-        // If there are no changes, we should get either new entity or no visible changes.
-        if ($diff) {
-          $title = reset($diff['#rows']);
-          $title = $title[0]['data'];
-        }
-        else {
-          $title = t('No visible changes');
-        }
-      }
-    }
-    else {
-      $diff = array();
-      $title = t('Newly created');
-    }
-  }
-  else {
-    $diff = array();
-    $title = t('No diffs for published site versions');
-  }
-
-  $can_edit = cps_can_edit_entities('update', $entity_type, $change, $entity->changeset_id);
-
-  $entity_info = entity_get_info($entity_type);
-  $build = array(
-    '#entity' => $change,
-    'top' => array(
-      '#prefix' => '<tr class="even">',
-      'title' => array(
-        '#prefix' => '<td class="cps-title">',
-        '#markup' => check_plain(entity_label($entity_type, $change)),
-        '#suffix' => '</td>',
-      ),
-      'bundle' => array(
-        '#prefix' => '<td class="cps-bundle">',
-        '#markup' => $entity_info['bundles'][$bundle]['label'],
-        '#suffix' => '</td>',
-      ),
-      'operations' => array(
-        '#prefix' => '<td class="cps-operations">',
-        'view' => array(
-          '#theme' => 'link',
-          '#text' => t('view'),
-          '#path' => $uri['path'],
-          '#options' => array(
-            'query' => array('changeset_id' => $entity->changeset_id),
-            'html' => TRUE,
-            'attributes' => array('class' => array('cps-changeset-operation')),
-          ),
-        ),
-        'remove' => array(
-          '#theme' => 'link',
-          '#text' => t('remove from site version'),
-          '#path' => $changeset_uri['path'] . '/remove/' . $entity_type . '/' . $entity_id,
-          '#options' => array(
-            'query' => drupal_get_destination(),
-            'html' => TRUE,
-            'attributes' => array('class' => array('cps-changeset-operation')),
-          ),
-          '#access' => $can_edit,
-        ),
-        'move' => array(
-          '#theme' => 'link',
-          '#text' => $can_edit ? t('move/copy to current site version') : t('copy to current site version'),
-          '#path' => $changeset_uri['path'] . '/move/' . $entity_type . '/' . $entity_id,
-          '#options' => array(
-            'query' => drupal_get_destination(),
-            'html' => TRUE,
-            'attributes' => array('class' => array('cps-changeset-operation')),
-          ),
-          '#access' => cps_can_edit_entities('move to', $entity_type, $change) && $entity->changeset_id != cps_get_current_changeset(),
-        ),
-        '#suffix' => '</td>',
-      ),
-      '#suffix' => '</tr>',
-    ),
-    'bottom' => array(
-      '#prefix' => '<tr class="odd"><td colspan="3" class="cps-changes"><div class="ctools-collapsible-container ctools-collapsed">',
-      'title' => array(
-        '#prefix' => '<div class="ctools-collapsible-handle">',
-        '#markup' => $title,
-        '#suffix' => '</div>',
-      ),
-      'changes' => array(
-        '#prefix' => '<div class="ctools-collapsible-content">',
-        'diff' => $diff,
-        '#suffix' => '</div>',
-      ),
-      '#suffix' => '</div></td></tr>',
-    ),
-    '#suffix' => '</div>',
-  );
-
-  return $build;
 }
 
 /**
@@ -1945,6 +1601,34 @@ function cps_changeset_get_operations(CPSChangeset $changeset) {
  */
 function cps_is_current_changeset_active() {
   return cps_get_current_changeset(TRUE) != CPS_PUBLISHED_CHANGESET;
+}
+
+// -----------------------------------------------------------------------
+// Menu callbacks that must be in .module
+
+/**
+ * _to_arg callback to provide a default when one is not provided.
+ *
+ * This is present to make tabs work correctly, and has no real value other
+ * than ensuring that warnings aren't given.
+ */
+function cps_changeset_optional_to_arg() {
+  return cps_get_current_changeset();
+}
+
+/**
+ * Menu _load callback for when cps_changeset is optional.
+ *
+ * @param string $changeset_id
+ *   A changeset ID taken from the URL.
+ *
+ * @return CPSChangeset
+ *   A changest object or NULL.
+ */
+function cps_changeset_optional_load($changeset_id) {
+  if ($changeset_id) {
+    return cps_changeset_load($changeset_id);
+  }
 }
 
 /**
