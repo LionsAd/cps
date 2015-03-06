@@ -344,16 +344,12 @@ function cps_changeset_unpublish_changeset_form_submit($form, &$form_state) {
     'operations' => array(
       array('cps_changeset_publish_batch_lock', array()),
       array('cps_changeset_unpublish_batch_variables', array($form_state['entity'], $form_state['previous'])),
+      array('cps_changeset_unpublish_batch_entity', array()),
     ),
     'finished' => 'cps_changeset_unpublish_batch_finished',
     'title' => t('Reverting %changeset', array('%changeset' => $form_state['entity']->name)),
     'file' => drupal_get_path('module', 'cps') . '/includes/forms.inc',
   );
-
-  foreach (cps_get_supported() as $entity_type) {
-    // For every entity type we support, add another operation for that entity type.
-    $batch['operations'][] = array('cps_changeset_unpublish_batch_entity', array());
-  }
 
   drupal_alter('cps_unpublish_changeset_batch', $batch, $form_state);
 

@@ -867,14 +867,17 @@ function cps_unpublish_changeset_entities($changeset_id, $previous_changeset_id)
   try {
     foreach ($changed as $entity_type => $entity_ids) {
       foreach ($entity_ids as $entity_id) {
-        $vid = db_query('SELECT revision_id FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id = :entity_id AND changeset_id = :changeset_id AND published = 0', array(
+        // If the entity existed in the previous changeset ID, use that version.
+        $vid = db_query('SELECT revision_id FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id = :entity_id AND changeset_id = :changeset_id', array(
           'entity_type' => $entity_type,
           'entity_id' => $entity_id,
-          'changeset_id' => $changeset_id,
+          'changeset_id' => $previous_changeset_id,
         ))->fetchField();
         if ($vid) {
           cps_make_revision_published($entity_type, $entity_id, $previous_changeset_id);
         }
+        // Otherwise assume the entity was new in the changeset, and publish the
+        // 'initial' version.
         else {
           cps_make_revision_published($entity_type, $entity_id, 'initial');
         }
