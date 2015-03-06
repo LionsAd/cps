@@ -811,6 +811,20 @@ function cps_make_revision_published($entity_type, $entity_id, $changeset_id) {
 }
 
 /**
+ * Return TRUE if the entity is in the changeset.
+ *
+ * @param $entity
+ *   The entity to check.
+ * @param $changeset_id
+ *   A changeset ID.
+ *
+ * @return bool
+ */
+function cps_is_entity_in_changeset($entity, $changeset_id) {
+  return isset($entity->changesets[$changeset_id]);
+}
+
+/**
  * Get tracked entities in a changeset.
  *
  * @param $changeset_id
