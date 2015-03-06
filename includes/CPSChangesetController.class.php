@@ -69,7 +69,7 @@ class CPSChangesetController extends EntityAPIController {
 
         case 'delete':
           // Published changesets may not be deleted.
-          $access = empty($entity->published);
+          $access = empty($entity->published) && (user_access('edit all changesets', $account) || $entity->uid == $account->uid);
           break;
 
         case 'publish':
