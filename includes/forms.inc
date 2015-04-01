@@ -85,6 +85,13 @@ function cps_changeset_edit_form($form, &$form_state) {
     '#title' => t('Description'),
     '#default_value' => $entity->description,
   );
+  
+  $form['info']['lock_in_select'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Lock in select'),
+    '#description' => t('If checked all users will see this site version in the site version selector bar while unpublished.'),
+    '#default_value' => $entity->lock_in_select,
+  );
 
   $form['actions'] = array(
     '#type' => 'actions',
@@ -111,6 +118,7 @@ function cps_changeset_edit_form_submit($form, &$form_state) {
   $entity = $form_state['entity'];
   $entity->name = $form_state['values']['name'];
   $entity->description = $form_state['values']['description'];
+  $entity->lock_in_select = $form_state['values']['lock_in_select'];
 
   if (!empty($entity->is_new)) {
     // Automatically move us to the new changeset context.

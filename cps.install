@@ -110,6 +110,13 @@ function cps_schema() {
         'not null' => TRUE,
         'default' => 0,
       ),
+      'lock_in_select' => array(
+        'description' => 'True if this changeset should be locked into all users select bars when open.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
     ),
     'primary key' => array('changeset_id'),
   );
@@ -573,4 +580,19 @@ function cps_update_7107() {
     $transaction->rollback();
     throw $e;
   }
+}
+
+/**
+ * Add lock_in_select field.
+ */
+function cps_update_7108() {
+  $field = array(
+    'description' => 'True if this changeset should be locked into all users select bars when open.',
+    'type' => 'int',
+    'unsigned' => TRUE,
+    'not null' => TRUE,
+    'default' => 0,
+  );
+
+  db_add_field('cps_changeset', 'lock_in_select', $field);
 }

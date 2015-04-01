@@ -1113,7 +1113,8 @@ function cps_get_changesets() {
     $query = new EntityFieldQuery();
     $results = $query->entityCondition('entity_type', 'cps_changeset')
       ->propertyCondition('status', CPS_ARCHIVED_STATUS, '<>')
-      ->propertyCondition('uid', $user->uid)
+      // Note that uid and locked check are in a db_or() in a query alter
+      // because EFQ does not support OR.
       ->propertyOrderBy('name')
       // This tag allows another module to modify this list if necessary.
       ->addTag('cps_active_changeset_list')
@@ -1128,6 +1129,13 @@ function cps_get_changesets() {
     $entities = cps_changeset_load_multiple(array_keys($results['cps_changeset']));
     foreach ($entities as $id => $entity) {
       $changesets[$id] = $entity->name;
+      if ($entity->lock_in_select) {
+        $locked[$id] = $entity->name;
+      }
+      // Assume if it's not locked it gets listed under 'mine'.
+      else {
+        $mine[$id] = $entity->name;
+      }
     }
   }
 
@@ -1173,8 +1181,12 @@ function cps_get_changesets() {
   $retval = $published;
 
   // Now my open changesets.
-  if ($changesets) {
-    $retval += array(t('My open site versions') => $changesets);
+  if (!empty($locked)) {
+    $retval += array(t('Locked open site versions') => $locked);
+  }
+
+  if (!empty($mine)) {
+    $retval += array(t('My open site versions') => $mine);
   }
 
   // My published if I've looked at them recently.
@@ -1189,6 +1201,18 @@ function cps_get_changesets() {
   }
 
   return $retval;
+}
+
+/**
+ * Implements hook_query_TAG_alter().
+ */
+function cps_query_cps_active_changeset_list_alter($query) {
+  // Because EFQ doesn't support OR, this hack adds a db_or() to the underlying
+  // query.
+  $query->condition(db_or()
+    ->condition('uid', $GLOBALS['user']->uid)
+    ->condition('lock_in_select', TRUE)
+  );
 }
 
 /**
