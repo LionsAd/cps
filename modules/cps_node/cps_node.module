@@ -66,7 +66,7 @@ function cps_node_form_node_form_alter(&$form, &$form_state, &$form_id) {
   $form['actions']['submit']['#submit'][] = 'cps_node_node_form_submit';
 
   if (empty($form_state['input'])) {
-    $warning = cps_changeset_edit_warning($form_state['node']);
+    $warning = cps_changeset_edit_warning('node', $form_state['node']);
     if ($warning) {
       drupal_set_message($warning, 'warning');
     }

@@ -329,10 +329,16 @@ function cps_menu() {
  * Implements hook_entity_load().
  */
 function cps_entity_load(&$entities, $entity_type) {
+  $changeset = cps_get_current_changeset();
+  if ($changeset == CPS_PUBLISHED_CHANGESET) {
+    return;
+  }
+
   $entity_info = entity_get_info($entity_type);
   if (empty($entity_info['entity keys']['revision'])) {
     return;
   }
+
   // When a non-default revision is being loaded, don't overwrite any of the
   // contents of that revision.
   foreach ($entities as $entity) {
@@ -347,54 +353,26 @@ function cps_entity_load(&$entities, $entity_type) {
     }
   }
 
-  $changeset = cps_get_current_changeset();
-  // Fetch entity state information for not published changesets OR the current
-  // one. We ignore published changesets because those will accrete over time
-  // and are generally irrelevant to our needs.
-  $keys = array_keys($entities);
-
-  // @todo: should this include the actual 'published' changeset, that has
-  // published = 0 so is included in the query currently.
-  $changesets = cps_get_unpublished_changesets();
-  if ($changeset != CPS_PUBLISHED_CHANGESET) {
-    $changesets[] = $changeset;
-  }
-  $result = db_query('SELECT * FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id IN (:ids) AND changeset_id IN (:changesets)', array(':entity_type' => $entity_type, ':ids' => $keys, ':changesets' => $changesets));
-  foreach ($result as $entity_state) {
-    $entities[$entity_state->entity_id]->changeset[$entity_state->changeset_id] = $entity_state;
-  }
-
-  // We only care further if the current changeset is not the published one.
-  if (!$changeset) {
-    return;
-  }
-
   $revision_key = $entity_info['entity keys']['revision'];
-
+  $tracked = cps_get_tracked_entities($changeset);
   foreach ($entities as $entity) {
     list($entity_id, $revision_id, $bundle) = entity_extract_ids($entity_type, $entity);
 
     // If this entity has a revision set for the current change set,
     // we need to swap it out for the correct revision.
-    if (!empty($entity->changeset[$changeset]) && $revision_id != $entity->changeset[$changeset]->revision_id) {
-
-      $swap_revision_id = $entity->changeset[$changeset]->revision_id;
+    if (isset($tracked[$entity_type][$entity_id]) && $tracked[$entity_type][$entity_id] != $revision_id) {
+      $swap_revision_id = $tracked[$entity_type][$entity_id];
       $draft_revisions = entity_load($entity_type, array($entity_id), array($revision_key => $swap_revision_id));
 
       // Swap the entity!
       if (!empty($draft_revisions[$entity_id])) {
         $new_entity = $entities[$entity_id] = $draft_revisions[$entity_id];
-        $new_entity->changeset = $entity->changeset;
         // Store the current revision ID so we can tell later if we need to put it back.
         $new_entity->published_revision_id = $revision_id;
         $new_entity->published_revision = clone($entity);
         // Tell entity API not to save this as the default revision:
         $new_entity->default_revision = FALSE;
         $entities[$entity_id] = $new_entity;
-      }
-      else {
-        // This state is invalid, and all we can do is remove the changeset from the list.
-        unset($entity->changeset[$changeset]);
       }
     }
   }
@@ -820,8 +798,10 @@ function cps_make_revision_published($entity_type, $entity_id, $changeset_id) {
  *
  * @return bool
  */
-function cps_is_entity_in_changeset($entity, $changeset_id) {
-  return isset($entity->changesets[$changeset_id]);
+function cps_is_entity_in_changeset($entity_type, $entity, $changeset_id) {
+  list($id) = entity_extract_ids($entity_type, $entity);
+  $tracked = cps_get_tracked_entities($changeset_id);
+  return isset($tracked[$entity_type][$id]);
 }
 
 /**
@@ -831,15 +811,17 @@ function cps_is_entity_in_changeset($entity, $changeset_id) {
  *   A changeset ID.
  *
  * @return
- *   An array with entity type as keys and array of entity IDs as values.
+ *   A nested array. First keyed by entity type, then by entity ID, with
+ *   revision IDs as values.
  *   type.
  */
 function cps_get_tracked_entities($changeset_id) {
   $cache = &drupal_static(__FUNCTION__, array());
   if (!isset($cache[$changeset_id])) {
-    $result = db_query('SELECT entity_type, entity_id  FROM {cps_entity} WHERE changeset_id = :changeset_id AND published = 0', array(':changeset_id' => $changeset_id));
+    $cache[$changeset_id] = [];
+    $result = db_query('SELECT entity_type, entity_id, revision_id  FROM {cps_entity} WHERE changeset_id = :changeset_id AND published = 0', array(':changeset_id' => $changeset_id));
     foreach ($result as $record) {
-      $cache[$changeset_id][$record->entity_type][$record->entity_id] = $record->entity_id;
+      $cache[$changeset_id][$record->entity_type][$record->entity_id] = $record->revision_id;
     }
   }
   return $cache[$changeset_id];
@@ -856,8 +838,8 @@ function cps_publish_changeset_entities($changeset_id) {
   $changed = cps_get_tracked_entities($changeset_id);
   $transaction = db_transaction();
   try {
-    foreach ($changed as $entity_type => $entity_ids) {
-      foreach ($entity_ids as $entity_id) {
+    foreach ($changed as $entity_type => $ids) {
+      foreach ($ids as $entity_id => $revision_id) {
         cps_make_revision_published($entity_type, $entity_id, $changeset_id);
       }
     }
@@ -879,8 +861,8 @@ function cps_unpublish_changeset_entities($changeset_id, $previous_changeset_id)
   $changed = cps_get_tracked_entities($changeset_id);
   $transaction = db_transaction();
   try {
-    foreach ($changed as $entity_type => $entity_ids) {
-      foreach ($entity_ids as $entity_id) {
+    foreach ($changed as $entity_type => $ids) {
+      foreach ($ids as $entity_id => $revision_id) {
         // If the entity existed in the previous changeset ID, use that version.
         $vid = db_query('SELECT revision_id FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id = :entity_id AND changeset_id = :changeset_id', array(
           'entity_type' => $entity_type,
@@ -939,7 +921,7 @@ function cps_add_untracked_entities($changeset_id, $entity_type, $start = 0, $li
 
   $entity_query = new EntityFieldQuery();
   if (!empty($tracked[$entity_type])) {
-    $entity_query->entityCondition('entity_id', $tracked[$entity_type], 'NOT IN');
+    $entity_query->entityCondition('entity_id', array_keys($tracked[$entity_type]), 'NOT IN');
   }
   $results = $entity_query
     ->entityCondition('entity_type', $entity_type)
@@ -1036,7 +1018,7 @@ function cps_can_edit_entities($op, $entity_type, $entity, $changeset_id = NULL)
   // If $op == 'move to' they cannot make this change if the entity already has
   // a revision in the changeset.
   if ($op == 'move to') {
-    if ($entity && !empty($entity->changeset[$changeset_id])) {
+    if ($entity && cps_is_entity_in_changeset($entity_type, $entity, $changeset_id)) {
       $access = FALSE;
     }
   }
@@ -1293,18 +1275,8 @@ function cps_changeset_get_state_labels() {
  * @return string|null
  *   A warning string or null.
  */
-function cps_changeset_edit_warning($entity) {
-  // $entity->changeset will only contain unpublished revisions.
-  if (empty($entity->changeset)) {
-    return;
-  }
-
-  foreach (array_keys($entity->changeset) as $id) {
-    // Ignore the current changeset.
-    if ($id == cps_get_current_changeset()) {
-      continue;
-    }
-
+function cps_changeset_edit_warning($entity_type, $entity) {
+  if (cps_entity_in_unpublished_changeset($entity_type, $entity, TRUE)) {
     // If anything else pops, put up a warning.
     return t('Warning, this content has unpublished changes in another site version! Whichever site version is published LAST will overwrite the other. Please see the History tab for details to help coordinate your changes.');
   }
@@ -1320,6 +1292,42 @@ function cps_entity_in_published_changeset($entity_type, $entity) {
 
   return $result;
 }
+
+/**
+ * Determine whether an entity is in any unpublished changeset.
+ *
+ * @param $entity_type
+ *   The entity type.
+ * @param $entity
+ *   The entity object.
+ * @param $exclude_current_changeset
+ *   Whether the query should exclude the current active changeset, useful if
+ *   checking whether an entity is in more than one pending changeset. Defaults
+ *   to FALSE.
+ *
+ *   @return
+ *     Boolean if the entity is in an unpublished changeset.
+ */
+function cps_entity_in_unpublished_changeset($entity_type, $entity, $exclude_current_changeset = FALSE) {
+  // Treat a changeset as published if the status is 'live' or 'archived'.
+  list($id) = entity_extract_ids($entity_type, $entity);
+  $changeset = cps_get_current_changeset(TRUE);
+  // Exclude the current changeset if requested, unless it's the published
+  // changeset which is never in the database anyway.
+  $query = db_select('cps_entity', 'ce');
+  $query->join('cps_changeset', 'cc', 'ce.changeset_id = cc.changeset_id');
+  $query->condition('cc.status', [CPS_ARCHIVED_STATUS, 'published'], 'NOT IN')
+    ->condition('ce.entity_type', $entity_type)
+    ->condition('ce.entity_id', $id)
+    ->range(0, 1)
+    ->addExpression(1);
+
+  if ($exclude_current_changeset && $changeset != CPS_PUBLISHED_CHANGESET) {
+    $query->condition('ce.changeset_id', $changeset, '<>');
+  }
+  return $query->execute()->fetchField();
+}
+
 
 /**
  * Lock the CPS publishing system.
