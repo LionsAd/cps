@@ -54,6 +54,11 @@ class CPSChangeset extends Entity {
   public $published = 0;
 
   /**
+   * TRUE if the changeset is locked into the selector in the IIB bar.
+   */
+  public $lock_in_select = FALSE;
+  
+  /**
    * An array of variables that are changed as part of this changeset.
    *
    * @var array
