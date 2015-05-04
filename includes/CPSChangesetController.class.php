@@ -101,7 +101,7 @@ class CPSChangesetController extends EntityAPIController {
   public function save($entity, DatabaseTransaction $transaction = NULL) {
     $entity->changed = REQUEST_TIME;
     $status = parent::save($entity, $transaction);
-    if (isset($entity->oldStatus)) {
+    if (isset($entity->oldStatus) && $entity->oldStatus != $entity->status) {
       // Record a status change in the history.
       $record = array(
         'changeset_id' => $entity->changeset_id,
