@@ -267,7 +267,8 @@ function cps_render_changed_entity($entity_type, $change, $entity) {
     $title = t('Newly created');
   }
 
-  $can_edit = cps_can_edit_entities('update', $entity_type, $change, $entity->changeset_id);
+  $can_edit_entities = cps_can_edit_entities('update', $entity_type, $change, $entity->changeset_id);
+  $can_edit_changeset = entity_access('update', 'cps_changeset', $entity);
 
   $entity_info = entity_get_info($entity_type);
   $build = array(
@@ -305,11 +306,11 @@ function cps_render_changed_entity($entity_type, $change, $entity) {
             'html' => TRUE,
             'attributes' => array('class' => array('cps-changeset-operation')),
           ),
-          '#access' => $can_edit,
+          '#access' => $can_edit_changeset,
         ),
         'move' => array(
           '#theme' => 'link',
-          '#text' => $can_edit ? t('move/copy to current site version') : t('copy to current site version'),
+          '#text' => $can_edit_entities ? t('move/copy to current site version') : t('copy to current site version'),
           '#path' => $changeset_uri['path'] . '/move/' . $entity_type . '/' . $entity_id,
           '#options' => array(
             'query' => drupal_get_destination(),
