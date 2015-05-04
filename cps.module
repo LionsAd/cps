@@ -1384,6 +1384,55 @@ function cps_publish_lock_time() {
   return FALSE;
 }
 
+/**
+ * Move or copy an entity from one changeset to another.
+ *
+ * It is the caller's responsibility to validate that this is okay.
+ *
+ * @param CPSChangeset $changeset_from
+ *   The source changeset.
+ * @param CPSChangeset $changeset_to
+ *   The destination changeset.
+ * @param string $entity_type
+ *   The type of entity being moved.
+ * @param object $entity
+ *   The entity being moved.
+ * @param string $move_type
+ *   Either 'move' or 'copy'. 'copy' is the default if not known.
+ */
+function cps_move_changeset($changeset_from, $changeset_to, $entity_type, $entity, $move_type) {
+  module_invoke_all('cps_move_changeset', $changeset_from, $changeset_to, $entity_type, $entity, $move_type);
+  list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
+
+  $transaction = db_transaction();
+  try {
+    // When moving just update the record for the old changeset to point to
+    // the new one.
+    if ($move_type == 'move') {
+      db_update('cps_entity')
+        ->condition('entity_type', $entity_type)
+        ->condition('entity_id', $entity_id)
+        ->condition('changeset_id', $changeset_from->changeset_id)
+        ->fields(array('changeset_id' => $changeset_to->changeset_id))
+        ->execute();
+    }
+    else {
+      cps_override_changeset($changeset_to->changeset_id);
+      // Otherwise save the entity in the new changeset - this will create a
+      // new revision tracked in the new changeset, leaving the old revision
+      // and cps_entity record intact.
+      entity_save($entity_type, $entity);
+      cps_override_changeset(NULL);
+    }
+  }
+  catch (Exception $e) {
+    drupal_set_message(nt('Unable to complete operation due to an internal error. Exception recorded to watchdog log.'));
+    $transaction->rollback();
+    watchdog_exception('cps', $e);
+    return;
+  }
+}
+
 // -------------------------------------------------------------------------
 // Database and general entity API functions
 

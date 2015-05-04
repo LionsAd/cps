@@ -336,38 +336,7 @@ function cps_changeset_move_form_submit($form, &$form_state) {
     cps_override_changeset($changeset_from->changeset_id);
     $entity = entity_load_single($entity_type, $entity_id);
 
-    module_invoke_all('cps_move_changeset', $changeset_from, $changeset_to, $entity_type, $entity, $form_state['values']['type']);
-    list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
-
-    $transaction = db_transaction();
-    try {
-      // When moving just update the record for the old changeset to point to
-      // the new one.
-      if ($form_state['values']['type'] == 'move') {
-        db_update('cps_entity')
-          ->condition('entity_type', $entity_type)
-          ->condition('entity_id', $entity_id)
-          ->condition('changeset_id', $changeset_from->changeset_id)
-          ->fields(array('changeset_id' => $changeset_to->changeset_id))
-          ->execute();
-      }
-      else {
-        // Otherwise save the entity in the new changeset - this will create a
-        // new revision tracked in the new changeset, leaving the old revision
-        // and cps_entity record intact.
-        cps_override_changeset($changeset_to->changeset_id);
-        entity_save($entity_type, $entity);
-      }
-    }
-    catch (Exception $e) {
-      drupal_set_message(t('Unable to @type %entity from the site version %title to the current site version.', array(
-        '%entity' => entity_label($entity_type, $entity),
-        '%title' => $changeset_from->label(),
-        '@type' => $form_state['values']['type'] == 'move' ? t('move') : t('copy')
-      )));
-      $transaction->rollback();
-      watchdog_exception('CPS', $e);
-    }
+    cps_move_changeset($changeset_from, $changeset_to, $entity_type, $entity, $form_state['values']['type']);
     drupal_set_message(t('Changes to %entity have been @type from the site version %title to the current site version.', array(
       '%entity' => entity_label($entity_type, $entity),
       '%title' => $changeset_from->label(),
