@@ -95,6 +95,7 @@ function cps_file_entity_menu() {
     'page callback' => 'cps_revisions_page',
     'page arguments' => array('file', 1),
     'access arguments' => array('create files'),
+    'weight' => 2,
     'file' => 'includes/admin.inc',
     'file path' => drupal_get_path('module', 'cps'),
     'type' => MENU_LOCAL_TASK,
