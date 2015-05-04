@@ -121,7 +121,14 @@ function cps_field_sql_storage_field_storage_query(EntityFieldQuery $query) {
   $entity_info = entity_get_info($entity_type);
   $entity_id_key = $entity_info['entity keys']['id'];
   $revision_id_key = $entity_info['entity keys']['revision'];
-  $bundle_key = $entity_info['entity keys']['bundle'];
+  // The $entity_info['entity keys']['bundle'] property provides the name of
+  // the key on the entity object that stores the bundle name. Normally, this
+  // will be the same as the database column that stores the bundle (which is
+  // what this function actually needs), but it doesn't have to be; for
+  // example, the two are different for taxonomy terms. For those cases, allow
+  // the module to override the default by providing a dedicated key for this
+  // purpose.
+  $bundle_key = isset($entity_info['entity keys']['bundle_database_column']) ? $entity_info['entity keys']['bundle_database_column'] : $entity_info['entity keys']['bundle'];
   $entity_base_table = $entity_info['base table'];
   $entity_revision_table = $entity_info['revision table'];
 

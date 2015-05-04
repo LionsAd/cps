@@ -1,0 +1,6 @@
+name = CPS Taxonomy
+description = Add CPS support for taxonomy term entities.
+core = 7.x
+
+dependencies[] = taxonomy_revision
+dependencies[] = cps
