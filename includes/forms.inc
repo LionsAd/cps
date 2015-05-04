@@ -43,7 +43,7 @@ function cps_changeset_preview_form($form, &$form_state) {
     );
   }
 
-  if ($changeset_state == CPS_LIVE_STATUS) {
+  if ($changeset_state == CPS_LIVE_STATUS && entity_access('create', 'cps_changeset')) {
     $form['new'] = array(
       '#markup' => l(t('Create'), 'admin/structure/changesets/add', array(
         'query' => drupal_get_destination(),
