@@ -561,7 +561,14 @@ function cps_get_revision_table_join($relationship, $table, $field, $cps_entity_
  */
 function cps_move_entity_table($query, $cps_entity_table, $alias) {
   $keys = array_keys($query->table_queue);
+  $current_index = array_search($cps_entity_table, $keys);
   $index = array_search($alias, $keys);
+
+  // If it's already before our table, we don't need to move it, as we
+  // could accidentally move it forward.
+  if ($current_index < $index) {
+    return;
+  }
   $splice = array($cps_entity_table => $query->table_queue[$cps_entity_table]);
   unset($query->table_queue[$cps_entity_table]);
 
