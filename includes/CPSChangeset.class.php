@@ -225,4 +225,90 @@ class CPSChangeset extends Entity {
     $this->status = $status;
     $this->statusMessage = $message;
   }
+
+  /**
+   * Generate a Drupal build array of changed entities for rendering.
+   *
+   * @return array
+   *   A Drupal render array.
+   */
+  function renderChangedEntities() {
+    $build = array(
+      '#attached' => array(
+        'js' => array(ctools_attach_js('collapsible-div')),
+        'css' => array(ctools_attach_css('collapsible-div')),
+      )
+    );
+
+    // Display a list of changed entities to make it easy to examine what
+    // changes this set contains.
+    $changes = $this->getChangedEntities();
+
+    if (!empty($changes)) {
+      $entity_info = entity_get_info();
+      foreach ($changes as $entity_type => $changed_entities) {
+        $build[$entity_type] = array(
+          '#type' => 'item',
+          '#title' => t('Changed %type', array('%type' => $entity_info[$entity_type]['label'])),
+          '#prefix' => '<table class="cps-changed-entities">',
+          '#suffix' => '</table>',
+        );
+
+        foreach ($changed_entities as $entity_id => $change) {
+          ctools_include('diff', 'cps');
+          $build[$entity_type][$entity_id] = cps_render_changed_entity($entity_type, $change, $this);
+        }
+      }
+    }
+    else {
+      $build['#markup'] = '<p class="cps-changeset-no-changes">' . t('This site version has no changes.') . '</p>';
+    }
+
+    return $build;
+  }
+
+  /**
+   * Render a table for the changeset's history.
+   *
+   * @return array
+   */
+  function renderHistory() {
+    $statuses = cps_changeset_get_state_labels();
+    $account = user_load($this->uid);
+    $items = array(
+      array(
+        t('Created'),
+        format_date($this->created),
+        format_username($account),
+        '',
+      )
+    );
+
+    foreach ($this->history as $item) {
+      $status = isset($statuses[$item->new_status]) ? $statuses[$item->new_status] : '';
+      // Special status for unpublishing.
+      if ($item->new_status == 'unpublished' && $item->previous_status == CPS_ARCHIVED_STATUS) {
+        $status = t('Unpublished');
+      }
+
+      drupal_alter('cps_changeset_history_status', $status, $this, $item);
+      $account = user_load($item->uid);
+      $items[] = array(
+        $status,
+        format_date($item->timestamp),
+        format_username($account),
+        $item->message,
+      );
+    }
+
+    $build = array(
+      '#title' => t('Site version history'),
+      '#type' => 'item',
+      '#theme' => 'table',
+      '#header' => array(t('Status'), t('Date'), t('Author'), t('Message')),
+      '#rows' => $items
+    );
+
+    return $build;
+  }
 }

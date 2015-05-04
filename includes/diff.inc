@@ -42,6 +42,10 @@ function cps_render_diff($entity_type, $old, $new, $state = 'raw', $context = ar
     '#changes' => 0,
   );
 
+  if ($theme = variable_get('diff_theme', 'default')) {
+    $build['#attached']['css'][] = ctools_attach_css("diff.{$theme}.css", 'diff');
+  }
+
   foreach ($rows as $key => $row) {
     if (strpos($key, 'diff-row-') === 0) {
       // The Diff module sometimes adds empty rows which are keyed like a
