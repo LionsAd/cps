@@ -56,7 +56,7 @@ function cps_file_entity_form_file_entity_edit_alter(&$form, &$form_state) {
   // If there is not currently a revision set up for this changeset,
   // force the flag to be true so file_entity_revisions knows to copy
   // the file.
-  $form['options']['new_revision']['#value'] = empty($file->changeset[$changeset_id]);
+  $form['options']['new_revision']['#value'] = !cps_is_entity_in_changeset('file', $file, $changeset_id);;
 
   if (empty($form_state['input'])) {
     $warning = cps_changeset_edit_warning('file', $file);
