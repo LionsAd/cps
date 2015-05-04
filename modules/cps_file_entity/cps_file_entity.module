@@ -50,6 +50,16 @@ function cps_file_entity_module_implements_alter(&$implementations, $hook) {
 }
 
 /**
+ * Implements hook_cps_can_entity_be_tracked().
+ */
+function cps_file_entity_cps_can_entity_be_tracked($entity_type, $entity) {
+  // Do not let CPS track temporary files.
+  if ($entity_type == 'file' && empty($entity->status)) {
+    return FALSE;
+  }
+}
+
+/**
  * Implements hook_form_FORM_ID_alter().
  *
  * For form_file_entity_edit.

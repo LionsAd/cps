@@ -69,9 +69,10 @@ function cps_exit() {
  * Implements hook_module_implements_alter().
  */
 function cps_module_implements_alter(&$implementations, $hook) {
-  if (in_array($hook, array('entity_query_alter', 'views_query_alter'))) {
+  if (in_array($hook, array('entity_query_alter', 'views_query_alter', 'field_attach_submit'))) {
     // Move CPS's query alter after entity reference's so we can remove the
-    // checks for published status.
+    // checks for published status. Also move CPS's hook_field_attach_submit()
+    // implementation last, so it can override what drafty_enforce does.
     $temp = $implementations['cps'];
     unset($implementations['cps']);
     $implementations['cps'] = $temp;
@@ -403,7 +404,7 @@ function cps_get_unpublished_changesets() {
  * Implements hook_entity_presave().
  */
 function cps_entity_presave($entity, $entity_type) {
-  if (cps_is_supported($entity_type)) {
+  if (cps_can_entity_be_tracked($entity_type, $entity)) {
     $initial = FALSE;
     $current_changeset = cps_get_current_changeset();
     if (!empty($entity->cps_initial_unpublished)) {
@@ -411,13 +412,12 @@ function cps_entity_presave($entity, $entity_type) {
       cps_override_changeset('initial');
     }
     else if ($current_changeset != CPS_PUBLISHED_CHANGESET) {
-      list($id) = entity_extract_ids($entity_type, $entity);
       // Force a draft revision to be created when updating entities within a
       // changeset. However respect the state of $entity->is_draft_revision if
       // it is already set since drafty uses this internally to re-save the
       // published version, and other modules may need the ability to override
       // this in specific circumstances.
-      if (isset($id) && !isset($entity->is_draft_revision)) {
+      if (!isset($entity->is_draft_revision) && cps_is_entity_tracked($entity_type, $entity)) {
         $entity->is_draft_revision = TRUE;
       }
     }
@@ -437,10 +437,31 @@ function cps_entity_presave($entity, $entity_type) {
  * Implements hook_entity_insert().
  */
 function cps_entity_insert($entity, $entity_type) {
-  if (!cps_is_supported($entity_type)) {
+  if (!cps_can_entity_be_tracked($entity_type, $entity)) {
     return;
   }
 
+  cps_insert_entity_tracking($entity_type, $entity);
+}
+
+/**
+ * Inserts a CPS record for an entity that is not currently tracked by CPS.
+ *
+ * This function should only be used when saving an entity that can be tracked
+ * by CPS but is not yet tracked in any changeset. (These conditions should be
+ * verified by the caller prior to use.) A new CPS record will be added for the
+ * current changeset as well as the special 'initial' changeset.
+ *
+ * @param string $entity_type
+ *   The type of entity, e.g. 'node'.
+ * @param object $entity
+ *   The entity object.
+ *
+ * @see cps_update_entity_tracking()
+ * @see cps_entity_insert()
+ * @see cps_entity_update()
+ */
+function cps_insert_entity_tracking($entity_type, $entity) {
   $changeset = cps_get_current_changeset();
   list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
 
@@ -493,13 +514,42 @@ function cps_entity_insert($entity, $entity_type) {
  * Implements hook_entity_update().
  */
 function cps_entity_update($entity, $entity_type) {
-  $changeset = cps_get_current_changeset();
-  // If we are not on a change set, do nothing.
-  if ($changeset == CPS_PUBLISHED_CHANGESET || !cps_is_supported($entity_type)) {
+  if (!cps_can_entity_be_tracked($entity_type, $entity)) {
     return;
   }
 
-  // @see cps_entity_insert().
+  if (cps_is_entity_tracked($entity_type, $entity)) {
+    cps_update_entity_tracking($entity_type, $entity);
+  }
+  else {
+    cps_insert_entity_tracking($entity_type, $entity);
+  }
+}
+
+/**
+ * Updates the CPS record for an entity that is already tracked by CPS.
+ *
+ * This function should be used whenever the entity is saved and already is
+ * tracked by CPS, regardless of the changeset in which it is tracked. (These
+ * conditions should be verified by the caller prior to use.) The CPS record
+ * will be updated for the current active changeset.
+ *
+ * @param string $entity_type
+ *   The type of entity, e.g. 'node'.
+ * @param object $entity
+ *   The entity object.
+ *
+ * @see cps_insert_entity_tracking()
+ * @see cps_entity_update()
+ */
+function cps_update_entity_tracking($entity_type, $entity) {
+  $changeset = cps_get_current_changeset();
+  // If we are not on a change set, do nothing.
+  if ($changeset == CPS_PUBLISHED_CHANGESET) {
+    return;
+  }
+
+  // See cps_insert_entity_tracking().
   if (!empty($entity->cps_initial_unpublished)) {
     $changeset = 'initial';
   }
@@ -523,6 +573,22 @@ function cps_entity_update($entity, $entity_type) {
       'revision_id' => $revision_id,
     ))
     ->execute();
+}
+
+/**
+ * Implements hook_field_attach_submit().
+ */
+function cps_field_attach_submit($entity_type, $entity, $form, &$form_state) {
+  // If an existing entity is being tracked by CPS for the first time, prevent
+  // Drafty from copying any older live revision back over it. This ensures
+  // that the live revision will be set to an unpublished version of the entity
+  // in the exact state it was in when it was first tracked by CPS, thereby
+  // matching the behavior of entities that are tracked by CPS as soon as the
+  // entity is created.
+  list($entity_id) = entity_extract_ids($entity_type, $entity);
+  if (isset($entity_id) && cps_can_entity_be_tracked($entity_type, $entity) && !cps_is_entity_tracked($entity_type, $entity)) {
+    $entity->is_draft_revision = FALSE;
+  }
 }
 
 /**
@@ -812,6 +878,49 @@ function cps_is_entity_in_changeset($entity_type, $entity, $changeset_id) {
   list($id) = entity_extract_ids($entity_type, $entity);
   $tracked = cps_get_tracked_entities($changeset_id);
   return isset($tracked[$entity_type][$id]);
+}
+
+/**
+ * Returns TRUE if the entity is tracked by CPS in any changeset.
+ *
+ * @param string $entity_type
+ *   The type of entity, e.g. 'node'.
+ * @param object $entity
+ *   The entity object.
+ *
+ * @return bool
+ */
+function cps_is_entity_tracked($entity_type, $entity) {
+  list($entity_id) = entity_extract_ids($entity_type, $entity);
+
+  // If this is a new entity, it can't have been tracked by CPS yet.
+  if (!isset($entity_id)) {
+    return FALSE;
+  }
+
+  // Although changeset information is attached to the entity in
+  // hook_entity_load(), it is not attached under all conditions, nor for all
+  // changesets, and it will not necessarily be up to date if the entity is in
+  // the process of being saved. So this function always does a fresh check
+  // instead.
+  return (bool) db_query_range('SELECT 1 FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id = :entity_id', 0, 1, array(':entity_type' => $entity_type, ':entity_id' => $entity_id))->fetchField();
+}
+
+/**
+ * Returns TRUE if the entity is allowed to be tracked by CPS.
+ *
+ * @param string $entity_type
+ *   The type of entity, e.g. 'node'.
+ * @param object $entity
+ *   The entity object.
+ *
+ * @return bool
+ */
+function cps_can_entity_be_tracked($entity_type, $entity) {
+  // The entity can be tracked if the entity type is supported by CPS, and if
+  // it already is tracked or if no module indicates that it should not be
+  // tracked.
+  return cps_is_supported($entity_type) && (cps_is_entity_tracked($entity_type, $entity) || !in_array(FALSE, module_invoke_all('cps_can_entity_be_tracked', $entity_type, $entity), TRUE));
 }
 
 /**
