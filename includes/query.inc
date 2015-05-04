@@ -379,17 +379,7 @@ function cps_views_query_alter_entity($view, $query, $entity_type) {
   // to this one. So we recorded at what index we saw that table, and then
   // use array_splice() to move the cps_entity table join to the right position.
   foreach ($move_cps_entities as $cps_entity_table => $alias) {
-    // Find the index of the $alias in table_queue keys.
-    $keys = array_keys($query->table_queue);
-    $index = array_search($alias, $keys);
-    $splice = array($cps_entity_table => $query->table_queue[$cps_entity_table]);
-    unset($query->table_queue[$cps_entity_table]);
-
-    // Now move the item to the proper location in the array. Don't use array_splice
-    // because that breaks indices.
-    $query->table_queue = array_slice($query->table_queue, 0, $index, TRUE) +
-      $splice +
-      array_slice($query->table_queue, $index, NULL, TRUE);
+    cps_move_entity_table($query, $cps_entity_table, $alias);
   }
 
   $entity_table = $entity_info['base table'];
@@ -505,10 +495,39 @@ function cps_ensure_revision_table($entity_type, $query, $relationship) {
 
   // Add this table only once.
   if (isset($query->tables[$relationship][$table])) {
-    return $query->tables[$relationship][$table]['alias'];
+    $alias = $query->tables[$relationship][$table]['alias'];
+    // If this table previously existed, but was not added by us, we need
+    // to modify the join and make sure that $cps_entity_table comes first.
+    if (empty($query->table_queue[$alias]['join']->cps_adjusted)) {
+      $query->table_queue[$alias]['join'] = cps_get_revision_table_join($relationship, $table, $field, $cps_entity_table);
+      // We also have to ensure that our cps_entity_table comes before this.
+      cps_move_entity_table($query, $cps_entity_table, $alias);
+    }
+
+    return $alias;
   }
 
   // Construct the join.
+  $join = cps_get_revision_table_join($relationship, $table, $field, $cps_entity_table);
+  return $query->queue_table($table, $relationship, $join);
+}
+
+/**
+ * Fetch a join object for a revision table, constructed to use cps_entity
+ *
+ * @param string $relationship
+ *   The $relationship to use in the view.
+ * @param $table
+ *   The table name.
+ * @param $field
+ *   The field to join on.
+ * @param $cps_entity_table
+ *   The alias of the cps_entity table joined to the main entity table.
+ *
+ * @return views_join
+ *   An adjusted views join object to add to the query.
+ */
+function cps_get_revision_table_join($relationship, $table, $field, $cps_entity_table) {
   $join = new views_join();
   $join->definition = array(
     'table' => $table,
@@ -520,8 +539,37 @@ function cps_ensure_revision_table($entity_type, $query, $relationship) {
 
   $join->construct();
   $join->adjusted = TRUE;
+  $join->cps_adjusted = TRUE;
 
-  return $query->queue_table($table, $relationship, $join);
+  return $join;
+}
+
+/**
+ * Move a cps_entity table to appear before $alias
+ *
+ * Because CPS chains possibly pre-existing tables onto the cps_entity table,
+ * we have to ensure that the cps_entity table appears in the query before
+ * the alias it's chained on or the SQL is invalid. This uses array_slice
+ * to reconstruct the query table_queue object.
+ *
+ * @param views_plugin_query_default $query
+ *   The SQL query object.
+ * @param $cps_entity_table
+ *   The alias of the CPS entity table
+ * @param $alias
+ *   The alias of the table it needs to appear before.
+ */
+function cps_move_entity_table($query, $cps_entity_table, $alias) {
+  $keys = array_keys($query->table_queue);
+  $index = array_search($alias, $keys);
+  $splice = array($cps_entity_table => $query->table_queue[$cps_entity_table]);
+  unset($query->table_queue[$cps_entity_table]);
+
+  // Now move the item to the proper location in the array. Don't use array_splice
+  // because that breaks indices.
+  $query->table_queue = array_slice($query->table_queue, 0, $index, TRUE) +
+    $splice +
+    array_slice($query->table_queue, $index, NULL, TRUE);
 }
 
 /**
