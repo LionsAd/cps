@@ -240,9 +240,15 @@ function cps_changeset_remove_form_submit($form, &$form_state) {
     $changeset = $form_state['changeset'];
     $entity_type = $form_state['entity_type'];
     $entity = $form_state['entity'];
-    $changeset->removeEntity($entity_type, $entity);
 
-    drupal_set_message(t('Changes to %entity have been removed from the site version %title.', array('%entity' => entity_label($entity_type, $entity), '%title' => $changeset->label())));
+    $success = $changeset->removeEntity($entity_type, $entity);
+    if ($success) {
+      drupal_set_message(t('Changes to %entity have been removed from the site version %title.', array('%entity' => entity_label($entity_type, $entity), '%title' => $changeset->label())));
+    }
+    else {
+      drupal_set_message(t('Changes to %entity could not be removed from the site version %title.', array('%entity' => entity_label($entity_type, $entity), '%title' => $changeset->label())), 'error');
+    }
+
     $form_state['redirect'] = $changeset->uri();
   }
 }

@@ -159,12 +159,31 @@ class CPSChangeset extends Entity {
     return $this->changedEntities;
   }
 
+  /**
+   * Removes an entity from the changeset by deleting its associated revision.
+   *
+   * @param string $entity_type
+   *   The type of entity being removed, for example 'node'.
+   * @param object $entity
+   *   The entity being removed. The revision associated with the provided
+   *   entity object is the one that will be deleted, so calling code should
+   *   make sure that the loaded revision actually corresponds to the one from
+   *   the correct changeset when providing an entity to this function.
+   *
+   * @return bool
+   *   TRUE if the entity was removed from the changeset, or FALSE if it could
+   *   not be removed.
+   */
   public function removeEntity($entity_type, $entity) {
     list($entity_id, $revision_id) = entity_extract_ids($entity_type, $entity);
-    cps_override_changeset(CPS_PUBLISHED_CHANGESET);
 
-    entity_revision_delete($entity_type, $revision_id);
+    cps_override_changeset(CPS_PUBLISHED_CHANGESET);
+    $success = entity_revision_delete($entity_type, $revision_id);
     cps_override_changeset(NULL);
+    if (!$success) {
+      return FALSE;
+    }
+
     module_invoke_all('cps_remove_changeset', $this, $entity_type, $entity);
     // We also need to remove any field collections that point to our entity from the changeset.
     $entities = $this->getChangedEntities();
@@ -183,6 +202,7 @@ class CPSChangeset extends Entity {
       }
     }
 
+    return TRUE;
   }
 
   /**
