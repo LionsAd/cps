@@ -5,6 +5,13 @@
  */
 
 /**
+ * Implements hook_entity_info_alter().
+ */
+function cps_file_entity_entity_info_alter(&$info) {
+  $info['file']['cps'] = TRUE;
+}
+
+/**
  * Implements hook_file_entity_access().
  */
 function cps_file_entity_file_entity_access($op, $file, $account) {
