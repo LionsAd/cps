@@ -147,7 +147,7 @@ function cps_entity_info() {
     // entity module callbacks
     'label callback' => 'entity_class_label',
     'uri callback' => 'entity_class_uri',
-    'view callback' => 'entity_metadata_view_single',
+    'view callback' => 'cps_changeset_view',
     'creation callback' => 'cps_changeset_create',
     'access callback' => 'cps_changeset_access',
     'save callback' => 'cps_changeset_save',
@@ -1625,7 +1625,7 @@ function cps_changeset_delete_multiple(array $changeset_ids) {
 /**
  * View a changeset entity.
  *
- * @param CPSChangeset $entity
+ * @param CPSChangeset[] $entities
  *   The changeset entity.
  * @param string $view_mode
  *   The view mode to view.
@@ -1637,8 +1637,12 @@ function cps_changeset_delete_multiple(array $changeset_ids) {
  *
  * @see node_view()
  */
-function cps_changeset_view(CPSChangeset $entity, $view_mode = 'full', $langcode = NULL) {
-  return entity_get_controller('cps_changeset')->view($entity, $view_mode, $langcode);
+function cps_changeset_view($entities, $view_mode = 'full', $langcode = NULL) {
+  // Allow a single view to work seamlessly.
+  if (!is_array($entities)) {
+    $entities = array($entities);
+  }
+  return entity_get_controller('cps_changeset')->view($entities, $view_mode, $langcode);
 }
 
 /**
