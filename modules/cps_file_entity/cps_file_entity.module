@@ -17,7 +17,7 @@ function cps_file_entity_entity_info_alter(&$info) {
 function cps_file_entity_file_entity_access($op, $file, $account) {
   // NOTE: This function never gets called if the user has 'bypass file access'
   // permission. Be sure to check that when debugging why this doesn't work!
-  if (!cps_can_edit_entities($op, 'file', $file)) {
+  if ($op != 'download' && !cps_can_edit_entities($op, 'file', $file)) {
     return FILE_ENTITY_ACCESS_DENY;
   }
 }
