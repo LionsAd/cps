@@ -223,16 +223,16 @@ function cps_create_installed_changeset() {
  * @param string $entity_type
  *   The entity type.
  *
- * @param mixed $sandbox
- *   If provided, this function won't loop, and you're expected to
+ * @param bool $process_once
+ *   If set to TRUE, this function won't loop, and you're expected to
  *   use a sandbox in a batch or update hook in order to use this in
  *   a long run. However install hooks don't do sandboxes, so in that
- *   case it should just loop.
+ *   case it should just loop. Defaults to FALSE.
  *
  * @return bool
  *   FALSE if finished, TRUE if there might be more records.
  */
-function cps_mark_current_content($entity_type, &$sandbox = NULL) {
+function cps_mark_current_content($entity_type, $process_once = FALSE) {
   cps_create_installed_changeset();
 
   $entity_info = entity_get_info($entity_type);
@@ -242,17 +242,6 @@ function cps_mark_current_content($entity_type, &$sandbox = NULL) {
 
   $limit = 500;
 
-  if (isset($sandbox)) {
-    if (!isset($sandbox['current'])) {
-      $sandbox['current'] = 0;
-    }
-
-    $current = &$sandbox['current'];
-  }
-  else {
-    $current = 0;
-  }
-
   // The do {} while () loop ensures this runs once if using sandbox, or until
   // completion if not using sandbox.
   do {
@@ -261,14 +250,16 @@ function cps_mark_current_content($entity_type, &$sandbox = NULL) {
     // Only have results if there is no link to a changeset already.
     $result = $query->fields('base', array($id_key, $revision_key))
       ->isNull('ce.changeset_id')
-      ->range($current, $limit)
+      // Always grab the first $limit results each time through the loop, since
+      // the insert query below ensures that the next time this query is run,
+      // none of the results that were returned last time will be returned
+      // again.
+      ->range(0, $limit)
       ->execute();
 
     if ($result->rowCount() == 0) {
       return FALSE;
     }
-
-    $current += $limit;
 
     // Use a multi-insert here for performance.
     $insert_query = db_insert('cps_entity')
@@ -285,7 +276,7 @@ function cps_mark_current_content($entity_type, &$sandbox = NULL) {
     }
 
     $insert_query->execute();
-  } while (!isset($sandbox));
+  } while (!$process_once);
 
   return TRUE;
 }
