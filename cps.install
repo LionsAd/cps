@@ -497,7 +497,7 @@ function cps_update_7106() {
 }
 
 /**
- * Add historical information for changeset affected by #2428323.
+ * Add historical information for changesets affected by #2428323.
  */
 function cps_update_7107() {
   $types = cps_get_supported();
@@ -510,27 +510,65 @@ function cps_update_7107() {
     }
   }
   $entity_info = entity_get_info();
-  $changeset_result = db_query('SELECT changeset_id, published FROM {cps_changeset} WHERE status = :status', array(':status' => 'archived'));
-
   $transaction = db_transaction();
   try {
-    foreach ($changeset_result as $changeset) {
-      foreach ($types as $type) {
-        $base_table = $entity_info[$type]['base table'];
-        $id_key = $entity_info[$type]['entity keys']['id'];
-        $revision_key = $entity_info[$type]['entity keys']['revision'];
-        // Find all entities missing from this changeset.
-        $from_query = db_select('cps_entity', 'cps_entity')
-          ->fields('cps_entity', ['entity_id'])
-          ->condition('changeset_id', $changeset->changeset_id)
-          ->condition('entity_type', $type);
-        $result = db_select($base_table, 'base')
-          ->fields('base', [$id_key, $revision_key])
-          ->condition($id_key, $from_query, 'NOT IN')
-          ->execute();
-
-        foreach ($result as $record) {
-          $vid = NULL;
+    foreach ($types as $type) {
+      $base_table = $entity_info[$type]['base table'];
+      $id_key = $entity_info[$type]['entity keys']['id'];
+      $revision_key = $entity_info[$type]['entity keys']['revision'];
+      // Find all entities of this type.
+      $result = db_select($base_table, 'base')
+        ->fields('base', array($id_key, $revision_key))
+        ->execute();
+      foreach ($result as $record) {
+        // For each entity, find the oldest changeset it was edited in (or, for
+        // entities that already existed when the CPS module was installed, use
+        // the "installed" changeset). The creation date of this changeset
+        // represents the earliest possible date at which the entity itself was
+        // created. (This works for the "installed" changeset too, since the
+        // creation timestamp for that changeset is 0. However, any other
+        // changeset with a creation timestamp of 0 should be ignored since it
+        // probably dates back to an older, pre-released version of CPS that
+        // did not track changeset creation times.)
+        $oldest_changeset = db_query_range("SELECT ce.changeset_id, cc.created FROM {cps_entity} ce INNER JOIN {cps_changeset} cc ON ce.changeset_id = cc.changeset_id WHERE ce.entity_id = :id AND ce.entity_type = :type AND ((ce.published = 0 AND cc.created > 0) OR ce.changeset_id = 'installed') ORDER BY cc.created", 0, 1, array(
+          ':id' => $record->{$id_key},
+          ':type' => $type,
+        ))->fetchObject();
+        // If the entity was never edited in a changeset and either (a) didn't
+        // exist at the time the CPS module was installed, or (b) did exist but
+        // was never tracked at install via cps_mark_current_content(), then no
+        // record will be returned here. Skip further processing because this
+        // means that either the entity doesn't need historical tracking added
+        // or that it has chosen to opt out of historical tracking.
+        if (!$oldest_changeset) {
+          continue;
+        }
+        // Ensure that the entity is added to all archived changesets that were
+        // published after the above creation date. This will guarantee that it
+        // is properly tracked in all changesets that were published after the
+        // entity was created, which is what cps_add_untracked_entities() does
+        // when it runs while a changeset is being published. (It might also
+        // add it to some changesets that it doesn't need to be added to, but
+        // in practice not too many, and it's the best that can be done here.)
+        $later_changesets = db_query("SELECT changeset_id, published FROM {cps_changeset} WHERE status = :status AND published > :published AND changeset_id != 'installed'", array(
+          ':status' => 'archived',
+          ':published' => $oldest_changeset->created,
+        ))->fetchAllAssoc('changeset_id');
+        $changeset_ids_with_entity = db_query('SELECT changeset_id FROM {cps_entity} WHERE entity_id = :id AND entity_type = :type', array(
+          ':id' => $record->{$id_key},
+          ':type' => $type,
+        ))->fetchCol();
+        $changesets_missing_entity = array_diff_key($later_changesets, array_flip($changeset_ids_with_entity));
+        foreach ($changesets_missing_entity as $changeset) {
+          // To match what cps_add_untracked_entities() does, the correct
+          // revision ID to insert here would be the current revision at the
+          // time the changeset was published. However, there is no good way to
+          // get that information. Instead, if the entity was edited in a
+          // changeset published prior to this one, the version ID from that
+          // changeset is used. This ensures that entities that have been
+          // edited in multiple changesets have the correct historical state;
+          // just taking the most recent revision ID would not be correct in
+          // this case.
           $previous_args = array(
             ':id' => $record->{$id_key},
             ':published' => $changeset->published,
@@ -542,12 +580,9 @@ function cps_update_7107() {
           if (in_array($type, $exclude_types)) {
             $vid = $record->{$revision_key};
           }
-          // If the entity was edited in a changeset published prior to this
-          // one, then the version ID from that changeset should be used. This
-          // ensures that entities that have been edited in multiple changesets
-          // have the correct historical state - just taking the most recent vid
-          // would not be correct in this case.
-          else if ($vid = db_query_range('SELECT revision_id FROM {cps_entity} ce INNER JOIN cps_changeset cc ON ce.changeset_id = cc.changeset_id WHERE ce.entity_id = :id AND ce.entity_type = :type AND ce.published = 0 AND cc.published < :published AND cc.status = :status ORDER BY cc.published DESC', 0, 1, $previous_args)->fetchField()) {
+          // Use the revision ID from the previous changeset this entity was
+          // edited in, if it exists.
+          elseif ($vid = db_query_range('SELECT revision_id FROM {cps_entity} ce INNER JOIN {cps_changeset} cc ON ce.changeset_id = cc.changeset_id WHERE ce.entity_id = :id AND ce.entity_type = :type AND ce.published = 0 AND cc.published < :published AND cc.status = :status ORDER BY cc.published DESC', 0, 1, $previous_args)->fetchField()) {
             // Assignment happens in the if statement, nothing else to do here.
           }
           // Otherwise use the current revision ID.
