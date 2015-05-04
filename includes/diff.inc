@@ -216,40 +216,51 @@ function cps_render_changed_entity($entity_type, $change, $entity) {
   $uri = entity_uri($entity_type, $change);
   $changeset_uri = $entity->uri();
 
-  // Don't render diff for published changesets:
-  if (!$entity->published) {
-    // We can't actually trust $change->published_revision because it might have
-    // loaded incompletely, so let's load a fresh version.
-
-    // Make sure that CPS doesn't swap out the entity it loads!
-    cps_override_changeset(CPS_PUBLISHED_CHANGESET);
-    $original = entity_load_single($entity_type, $entity_id);
-    cps_override_changeset(NULL);
-
-    if (cps_entity_in_published_changeset($entity_type, $original)) {
-      $diff = cps_render_diff($entity_type, $original, $change);
-      if (!empty($diff['#changes'])) {
-        $title = format_plural($diff['#changes'], '1 change', '@count changes');
-      }
-      else {
-        // If there are no changes, we should get either new entity or no visible changes.
-        if ($diff) {
-          $title = reset($diff['#rows']);
-          $title = $title[0]['data'];
-        }
-        else {
-          $title = t('No visible changes');
-        }
-      }
+  // Cache this on the changeset entity so that we don't run the query
+  // over and over again on the changeset view page.
+  if (!isset($entity->cps_changeset_to_diff_against)) {
+    if (!$entity->published) {
+      $entity->cps_changeset_to_diff_against = CPS_PUBLISHED_CHANGESET;
     }
     else {
-      $diff = array();
-      $title = t('Newly created');
+      $entity->cps_changeset_to_diff_against = db_query("SELECT changeset_id FROM {cps_changeset} WHERE published < :published ORDER by published DESC LIMIT 1", [':published' => $entity->published])->fetchField();
+    }
+  }
+
+  // We can't actually trust $change->published_revision because it might have
+  // loaded incompletely, so let's load a fresh version.
+
+  // Make sure that CPS doesn't swap out the entity it loads!
+  cps_override_changeset($entity->cps_changeset_to_diff_against);
+  $original = entity_load_single($entity_type, $entity_id);
+  cps_override_changeset(NULL);
+
+  if ($entity->cps_changeset_to_diff_against != CPS_PUBLISHED_CHANGESET) {
+    $new = !empty($original->default_revision);
+  }
+  else {
+    $new = !cps_entity_in_published_changeset($entity_type, $original);
+  }
+
+  if (!$new) {
+    $diff = cps_render_diff($entity_type, $original, $change);
+    if (!empty($diff['#changes'])) {
+      $title = format_plural($diff['#changes'], '1 change', '@count changes');
+    }
+    else {
+      // If there are no changes, we should get either new entity or no visible changes.
+      if ($diff) {
+        $title = reset($diff['#rows']);
+        $title = $title[0]['data'];
+      }
+      else {
+        $title = t('No visible changes');
+      }
     }
   }
   else {
     $diff = array();
-    $title = t('No diffs for published site versions');
+    $title = t('Newly created');
   }
 
   $can_edit = cps_can_edit_entities('update', $entity_type, $change, $entity->changeset_id);
