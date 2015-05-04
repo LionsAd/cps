@@ -354,14 +354,23 @@ function cps_entity_load(&$entities, $entity_type) {
   }
 
   $revision_key = $entity_info['entity keys']['revision'];
-  $tracked = cps_get_tracked_entities($changeset);
+  $keys = array_keys($entities);
+  // We don't use cps_get_tracked_entities() because when viewing archived
+  // changesets, would either have to load all the entities on the site or
+  // would not correctly get entities that were tagged for their state at
+  // the time of publication.
+  $result = db_query('SELECT * FROM {cps_entity} WHERE entity_type = :entity_type AND entity_id IN (:ids) AND changeset_id = :changeset_id', array(':entity_type' => $entity_type, ':ids' => $keys, ':changeset_id' => $changeset));
+  foreach ($result as $entity_state) {
+    $tracked[$entity_state->entity_id] = $entity_state->revision_id;
+  }
+
   foreach ($entities as $entity) {
     list($entity_id, $revision_id, $bundle) = entity_extract_ids($entity_type, $entity);
 
     // If this entity has a revision set for the current change set,
     // we need to swap it out for the correct revision.
-    if (isset($tracked[$entity_type][$entity_id]) && $tracked[$entity_type][$entity_id] != $revision_id) {
-      $swap_revision_id = $tracked[$entity_type][$entity_id];
+    if (isset($tracked[$entity_id]) && $tracked[$entity_id] != $revision_id) {
+      $swap_revision_id = $tracked[$entity_id];
       $draft_revisions = entity_load($entity_type, array($entity_id), array($revision_key => $swap_revision_id));
 
       // Swap the entity!
