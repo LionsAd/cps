@@ -89,7 +89,7 @@ function cps_taxonomy_field_attach_form($entity_type, $entity, &$form, &$form_st
   if ($entity_type == 'taxonomy_term' && !empty($entity->tid)) {
     $form['revision_information']['#access'] = FALSE;
     if (empty($form_state['input'])) {
-      $warning = cps_changeset_edit_warning($entity);
+      $warning = cps_changeset_edit_warning($entity_type, $entity);
       if ($warning) {
         drupal_set_message($warning, 'warning');
       }
