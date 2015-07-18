@@ -19,3 +19,6 @@ drush dl -y drafty
 
 # Test dependencies of drafty.
 drush dl -y field_collection entity_translation title-7.x-1.x-dev
+
+# Test dependencies of cps_workflow_simple
+drush dl -y mimemail mailsystem
