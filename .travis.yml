@@ -11,7 +11,6 @@ language: php
 sudo: false
 
 php:
-  - 5.3
   - 5.4
   - 5.5
   - 5.6
@@ -25,6 +24,7 @@ branches:
 matrix:
   fast_finish: true
   allow_failures:
+    - php: 7
     - php: hhvm
 
 env:
@@ -35,7 +35,7 @@ env:
 
     # Configuration variables.
     - DRUPAL_TI_MODULE_NAME="cps"
-    - DRUPAL_TI_SIMPLETEST_GROUP="Drafty"
+    - DRUPAL_TI_SIMPLETEST_GROUP="CPS"
 
     # Define runners and environment vars to include before and after the
     # main runners / environment vars.
@@ -111,6 +111,7 @@ install:
   - drupal-ti install
 
 before_script:
+  - drupal-ti --include .travis-before-script.sh
   - drupal-ti before_script
 
 script:

@@ -9,6 +9,11 @@ dependencies[] = entity_status
 dependencies[] = iib
 dependencies[] = views
 
+; For testing cps_workflow_simple the following modules are required.
+test_dependencies[] = mimemail
+test_dependencies[] = mailsystem
+
+
 files[] = cps.test
 files[] = includes/CPSChangeset.class.php
 files[] = includes/CPSChangesetController.class.php
