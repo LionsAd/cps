@@ -8,12 +8,19 @@
 
 language: php
 
+sudo: false
+
 php:
   - 5.3
   - 5.4
   - 5.5
   - 5.6
+  - 7
   - hhvm
+
+branches:
+  only:
+    - "7.x-1.x"
 
 matrix:
   fast_finish: true
@@ -26,7 +33,7 @@ env:
     # see: https://github.com/drush-ops/drush#install---composer
     - PATH="$PATH:$HOME/.composer/vendor/bin"
 
-    # Configuration vars.
+    # Configuration variables.
     - DRUPAL_TI_MODULE_NAME="cps"
     - DRUPAL_TI_SIMPLETEST_GROUP="Drafty"
 
@@ -38,7 +45,7 @@ env:
     # The environment to use, supported are: drupal-7, drupal-8
     - DRUPAL_TI_ENVIRONMENT="drupal-7"
 
-    # Drupal specific vars.
+    # Drupal specific variables.
     - DRUPAL_TI_DB="drupal_travis_db"
     - DRUPAL_TI_DB_URL="mysql://root:@127.0.0.1/drupal_travis_db"
     # Note: Do not add a trailing slash here.
@@ -48,8 +55,27 @@ env:
     # Simpletest specific commandline arguments, the DRUPAL_TI_SIMPLETEST_GROUP is appended at the end.
     - DRUPAL_TI_SIMPLETEST_ARGS="--verbose --color --concurrency 4 --url $DRUPAL_TI_WEBSERVER_URL:$DRUPAL_TI_WEBSERVER_PORT"
 
+    # === Behat specific variables.
+    # This is relative to $TRAVIS_BUILD_DIR
+    - DRUPAL_TI_BEHAT_DIR="./tests/behat"
+    # These arguments are passed to the bin/behat command.
+    - DRUPAL_TI_BEHAT_ARGS=""
+    # Specify the filename of the behat.yml with the $DRUPAL_TI_DRUPAL_DIR variables.
+    - DRUPAL_TI_BEHAT_YML="behat.yml.dist"
+    # This is used to setup Xvfb.
+    - DRUPAL_TI_BEHAT_SCREENSIZE_COLOR="1280x1024x16"
+    # The version of seleniumthat should be used.
+    - DRUPAL_TI_BEHAT_SELENIUM_VERSION="2.44"
+    # Set DRUPAL_TI_BEHAT_DRIVER to "selenium" to use "firefox" or "chrome" here.
+    - DRUPAL_TI_BEHAT_DRIVER="phantomjs"
+    - DRUPAL_TI_BEHAT_BROWSER="firefox"
+
     # PHPUnit specific commandline arguments.
     - DRUPAL_TI_PHPUNIT_ARGS=""
+    # Specifying the phpunit-core src/ directory is useful when e.g. a vendor/
+    # directory is present in the module directory, which phpunit would then
+    # try to find tests in. This option is relative to $TRAVIS_BUILD_DIR.
+    #- DRUPAL_TI_PHPUNIT_CORE_SRC_DIRECTORY="./tests/src"
 
     # Code coverage via coveralls.io
     - DRUPAL_TI_COVERAGE="satooshi/php-coveralls:0.6.*"
@@ -58,12 +84,18 @@ env:
 
     # Debug options
     #- DRUPAL_TI_DEBUG="-x -v"
+    # Set to "all" to output all files, set to e.g. "xvfb selenium" or "selenium",
+    # etc. to only output those channels.
+    #- DRUPAL_TI_DEBUG_FILE_OUTPUT="selenium xvfb webserver"
 
   matrix:
     # [[[ SELECT ANY OR MORE OPTIONS ]]]
-    - DRUPAL_TI_RUNNERS="simpletest"
     #- DRUPAL_TI_RUNNERS="phpunit"
-    #- DRUPAL_TI_RUNNERS="phpunit simpletest"
+    - DRUPAL_TI_RUNNERS="simpletest"
+    #- DRUPAL_TI_RUNNERS="behat"
+    #- DRUPAL_TI_RUNNERS="phpunit simpletest behat"
+    # Use phpunit-core to test modules with phpunit with Drupal 8 core.
+    #- DRUPAL_TI_RUNNERS="phpunit-core"
 
 mysql:
   database: drupal_travis_db
@@ -72,7 +104,6 @@ mysql:
 
 before_install:
   - composer self-update
-#  - cd ./tests
   - composer global require "lionsad/drupal_ti:1.*"
   - drupal-ti before_install
 
