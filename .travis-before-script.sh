@@ -18,4 +18,4 @@ cd "$DRUPAL_TI_MODULES_PATH"
 drush dl -y drafty
 
 # Test dependencies of drafty.
-drush dl -y field_collection entity_translation title taxonomy
+drush dl -y field_collection entity_translation title
