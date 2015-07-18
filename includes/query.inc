@@ -6,6 +6,66 @@
  */
 
 /**
+ * Implements hook_query_alter().
+ */
+function cps_query_alter(QueryAlterableInterface $query) {
+  // No need to alter if there's no active changeset.
+  $changeset_id = cps_get_current_changeset();
+  if ($changeset_id == CPS_PUBLISHED_CHANGESET) {
+    return;
+  }
+
+  // The tag is per-entity-type, so need to consult entity info.
+  $types = cps_get_supported();
+  foreach ($types as $entity_type) {
+    if ($query->hasTag($entity_type . '_load_multiple')) {
+      // Don't load the changeset before here, since that could lead to infinite
+      // recursion - changesets are entities but will never be CPS enabled.
+      // However now we're here, protect against invalid changeset IDs.
+      $changeset_id = cps_get_current_changeset(TRUE);
+      if ($changeset_id == CPS_PUBLISHED_CHANGESET) {
+        return;
+      }
+      $changeset = cps_changeset_load($changeset_id);
+      $info = entity_get_info($entity_type);
+      $entity_id_key = $info['entity keys']['id'];
+      $revision_id_key = $info['entity keys']['revision'];
+      $entity_revision_table = $info['revision table'];
+      $conditions =& $query->conditions();
+
+      // Every condition that's on the base table, needs to be on the revision
+      // table.
+      $add_join = FALSE;
+      $table_alias = 'cps_revision';
+      foreach ($conditions as &$condition) {
+        if (is_array($condition)) {
+          // If there's a condition on the revision key, don't need to alter at
+          // all.
+          if ($condition['field'] == 'revision.' . $revision_id_key) {
+            return;
+          }
+          // Only alter conditions on the base table, and only if they aren't on
+          // the entity ID key.
+          if (strpos($condition['field'], 'base.') === 0 && $condition['field'] != 'base.' . $entity_id_key) {
+            $add_join = TRUE;
+            $condition['field'] = str_replace('base.', $table_alias . '.', $condition['field']);
+          }
+        }
+      }
+      if ($add_join) {
+        // If the changeset has been published, we INNER join to exclude content
+        // that did not exist when the changeset was published. If it has not, we
+        // LEFT join so we can properly include live content along with the
+        // changeset.
+        $join_type = $changeset->published ? 'INNER' : 'LEFT';
+        $query->addJoin($join_type, 'cps_entity', 'cps_entity', "cps_entity.entity_type = '$entity_type' AND cps_entity.entity_id = base.$entity_id_key AND cps_entity.changeset_id = '$changeset_id'");
+        $query->join($entity_revision_table, $table_alias, "$table_alias.$revision_id_key = COALESCE(cps_entity.revision_id, base.$revision_id_key)");
+      }
+    }
+  }
+}
+
+/**
  * Implements hook_entity_query_alter().
  *
  * @param $query
@@ -61,8 +121,16 @@ function cps_field_sql_storage_field_storage_query(EntityFieldQuery $query) {
   $entity_info = entity_get_info($entity_type);
   $entity_id_key = $entity_info['entity keys']['id'];
   $revision_id_key = $entity_info['entity keys']['revision'];
-  $bundle_key = $entity_info['entity keys']['bundle'];
+  // The $entity_info['entity keys']['bundle'] property provides the name of
+  // the key on the entity object that stores the bundle name. Normally, this
+  // will be the same as the database column that stores the bundle (which is
+  // what this function actually needs), but it doesn't have to be; for
+  // example, the two are different for taxonomy terms. For those cases, allow
+  // the module to override the default by providing a dedicated key for this
+  // purpose.
+  $bundle_key = isset($entity_info['entity keys']['bundle_database_column']) ? $entity_info['entity keys']['bundle_database_column'] : $entity_info['entity keys']['bundle'];
   $entity_base_table = $entity_info['base table'];
+  $entity_revision_table = $entity_info['revision table'];
 
   // Unlike the original, we always use the entity table as the base table.
   // We can do this because we have verified that there is an entity type
@@ -76,23 +144,30 @@ function cps_field_sql_storage_field_storage_query(EntityFieldQuery $query) {
     $select_query->addTag('entity_field_access');
   }
 
+  // If the changeset has been published, we INNER join to exclude content that did not exist when
+  // the changeset was published. If it has not, we LEFT join so we can properly include live
+  // content along with the changeset.
+  $join_type = $changeset->published ? 'INNER' : 'LEFT';
+  $select_query->addJoin($join_type, 'cps_entity', 'cps_entity', "cps_entity.entity_type = '$entity_type' AND cps_entity.entity_id = $entity_base_table.$entity_id_key AND cps_entity.changeset_id = '$changeset_id'");
+
+  // Add a join on the revision table, so that the stub revision ID returned in
+  // results is the one in the changeset, not whatever is in the base table.
+  $entity_revision_table = $entity_info['revision table'];
+  $select_query->join($entity_revision_table, $entity_revision_table, "$entity_revision_table.$revision_id_key = COALESCE(cps_entity.revision_id, $entity_base_table.$revision_id_key)");
+
   // This adds all of the base fields that are expected so that it can create
   // a pseudo entity when reading the results.
   $select_query->addMetaData('base_table', $entity_base_table);
+  $select_query->addMetaData('revision_table', $entity_revision_table);
   $select_query->addExpression("'$entity_type'", 'entity_type');
   $select_query->addField($entity_base_table, $entity_id_key, 'entity_id');
-  $select_query->addField($entity_base_table, $revision_id_key, 'revision_id');
+  $select_query->addField($entity_revision_table, $revision_id_key, 'revision_id');
   // The bundle key is optional in the case where the entity type only has one
   // bundle.
   if ($bundle_key) {
     $select_query->addField($entity_base_table, $bundle_key, 'bundle');
   }
 
-  // If the changeset has been published, we INNER join to exclude content that did not exist when
-  // the changeset was published. If it has not, we LEFT join so we can properly include live
-  // content along with the changeset.
-  $join_type = $changeset->published ? 'INNER' : 'LEFT';
-  $select_query->addJoin($join_type, 'cps_entity', 'cps_entity', "cps_entity.entity_type = '$entity_type' AND cps_entity.entity_id = $entity_base_table.$entity_id_key AND cps_entity.changeset_id = '$changeset_id'");
 
   $table_aliases = array();
   // Add tables for the fields used.
@@ -138,19 +213,13 @@ function cps_field_sql_storage_field_storage_query(EntityFieldQuery $query) {
   }
 
   if ($query->propertyConditions || $has_property_order) {
-    // We always add the revision table if we have a property order or condition. It is
-    // actually possible the revision table will be added unnecessarily but it is
-    // difficult to check prior to adding the table without accidentally adding
-    // the table multiple times.
-    $revision_table = $entity_info['revision table'];
-    $select_query->join($revision_table, $revision_table, "$revision_table.$revision_id_key = COALESCE(cps_entity.revision_id, $entity_base_table.$revision_id_key)");
     $query->entityConditions['entity_type']['operator'] = '=';
 
     // Check to see if the property exists on the revision table. If it does, use that instead
     // so that we can properly see the revision. If not, default to the entity base table.
     foreach ($query->propertyConditions as $property_condition) {
       if (in_array($property_condition['column'], $entity_info['schema_fields_sql']['revision table'])) {
-        $query->addCondition($select_query, "$revision_table." . $property_condition['column'], $property_condition);
+        $query->addCondition($select_query, "$entity_revision_table." . $property_condition['column'], $property_condition);
       }
       else {
         $query->addCondition($select_query, "$entity_base_table." . $property_condition['column'], $property_condition);
@@ -207,7 +276,7 @@ function cps_field_sql_storage_field_storage_query(EntityFieldQuery $query) {
     elseif ($order['type'] == 'property') {
       // Like property conditions above, check if it is in the revision table.
       if (in_array($order['specifier'], $entity_info['schema_fields_sql']['revision table'])) {
-        $select_query->orderBy("$revision_table." . $order['specifier'], $order['direction']);
+        $select_query->orderBy("$entity_revision_table." . $order['specifier'], $order['direction']);
       }
       else {
         $select_query->orderBy("$entity_base_table." . $order['specifier'], $order['direction']);
@@ -317,17 +386,7 @@ function cps_views_query_alter_entity($view, $query, $entity_type) {
   // to this one. So we recorded at what index we saw that table, and then
   // use array_splice() to move the cps_entity table join to the right position.
   foreach ($move_cps_entities as $cps_entity_table => $alias) {
-    // Find the index of the $alias in table_queue keys.
-    $keys = array_keys($query->table_queue);
-    $index = array_search($alias, $keys);
-    $splice = array($cps_entity_table => $query->table_queue[$cps_entity_table]);
-    unset($query->table_queue[$cps_entity_table]);
-
-    // Now move the item to the proper location in the array. Don't use array_splice
-    // because that breaks indices.
-    $query->table_queue = array_slice($query->table_queue, 0, $index, TRUE) +
-      $splice +
-      array_slice($query->table_queue, $index, NULL, TRUE);
+    cps_move_entity_table($query, $cps_entity_table, $alias);
   }
 
   $entity_table = $entity_info['base table'];
@@ -443,10 +502,39 @@ function cps_ensure_revision_table($entity_type, $query, $relationship) {
 
   // Add this table only once.
   if (isset($query->tables[$relationship][$table])) {
-    return $query->tables[$relationship][$table]['alias'];
+    $alias = $query->tables[$relationship][$table]['alias'];
+    // If this table previously existed, but was not added by us, we need
+    // to modify the join and make sure that $cps_entity_table comes first.
+    if (empty($query->table_queue[$alias]['join']->cps_adjusted)) {
+      $query->table_queue[$alias]['join'] = cps_get_revision_table_join($relationship, $table, $field, $cps_entity_table);
+      // We also have to ensure that our cps_entity_table comes before this.
+      cps_move_entity_table($query, $cps_entity_table, $alias);
+    }
+
+    return $alias;
   }
 
   // Construct the join.
+  $join = cps_get_revision_table_join($relationship, $table, $field, $cps_entity_table);
+  return $query->queue_table($table, $relationship, $join);
+}
+
+/**
+ * Fetch a join object for a revision table, constructed to use cps_entity
+ *
+ * @param string $relationship
+ *   The $relationship to use in the view.
+ * @param $table
+ *   The table name.
+ * @param $field
+ *   The field to join on.
+ * @param $cps_entity_table
+ *   The alias of the cps_entity table joined to the main entity table.
+ *
+ * @return views_join
+ *   An adjusted views join object to add to the query.
+ */
+function cps_get_revision_table_join($relationship, $table, $field, $cps_entity_table) {
   $join = new views_join();
   $join->definition = array(
     'table' => $table,
@@ -458,8 +546,44 @@ function cps_ensure_revision_table($entity_type, $query, $relationship) {
 
   $join->construct();
   $join->adjusted = TRUE;
+  $join->cps_adjusted = TRUE;
 
-  return $query->queue_table($table, $relationship, $join);
+  return $join;
+}
+
+/**
+ * Move a cps_entity table to appear before $alias
+ *
+ * Because CPS chains possibly pre-existing tables onto the cps_entity table,
+ * we have to ensure that the cps_entity table appears in the query before
+ * the alias it's chained on or the SQL is invalid. This uses array_slice
+ * to reconstruct the query table_queue object.
+ *
+ * @param views_plugin_query_default $query
+ *   The SQL query object.
+ * @param $cps_entity_table
+ *   The alias of the CPS entity table
+ * @param $alias
+ *   The alias of the table it needs to appear before.
+ */
+function cps_move_entity_table($query, $cps_entity_table, $alias) {
+  $keys = array_keys($query->table_queue);
+  $current_index = array_search($cps_entity_table, $keys);
+  $index = array_search($alias, $keys);
+
+  // If it's already before our table, we don't need to move it, as we
+  // could accidentally move it forward.
+  if ($current_index < $index) {
+    return;
+  }
+  $splice = array($cps_entity_table => $query->table_queue[$cps_entity_table]);
+  unset($query->table_queue[$cps_entity_table]);
+
+  // Now move the item to the proper location in the array. Don't use array_splice
+  // because that breaks indices.
+  $query->table_queue = array_slice($query->table_queue, 0, $index, TRUE) +
+    $splice +
+    array_slice($query->table_queue, $index, NULL, TRUE);
 }
 
 /**

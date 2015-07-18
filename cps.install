@@ -110,6 +110,13 @@ function cps_schema() {
         'not null' => TRUE,
         'default' => 0,
       ),
+      'lock_in_select' => array(
+        'description' => 'True if this changeset should be locked into all users select bars when open.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
     ),
     'primary key' => array('changeset_id'),
   );
@@ -216,16 +223,16 @@ function cps_create_installed_changeset() {
  * @param string $entity_type
  *   The entity type.
  *
- * @param mixed $sandbox
- *   If provided, this function won't loop, and you're expected to
+ * @param bool $process_once
+ *   If set to TRUE, this function won't loop, and you're expected to
  *   use a sandbox in a batch or update hook in order to use this in
  *   a long run. However install hooks don't do sandboxes, so in that
- *   case it should just loop.
+ *   case it should just loop. Defaults to FALSE.
  *
  * @return bool
  *   FALSE if finished, TRUE if there might be more records.
  */
-function cps_mark_current_content($entity_type, &$sandbox = NULL) {
+function cps_mark_current_content($entity_type, $process_once = FALSE) {
   cps_create_installed_changeset();
 
   $entity_info = entity_get_info($entity_type);
@@ -235,17 +242,6 @@ function cps_mark_current_content($entity_type, &$sandbox = NULL) {
 
   $limit = 500;
 
-  if (isset($sandbox)) {
-    if (!isset($sandbox['current'])) {
-      $sandbox['current'] = 0;
-    }
-
-    $current = &$sandbox['current'];
-  }
-  else {
-    $current = 0;
-  }
-
   // The do {} while () loop ensures this runs once if using sandbox, or until
   // completion if not using sandbox.
   do {
@@ -254,14 +250,16 @@ function cps_mark_current_content($entity_type, &$sandbox = NULL) {
     // Only have results if there is no link to a changeset already.
     $result = $query->fields('base', array($id_key, $revision_key))
       ->isNull('ce.changeset_id')
-      ->range($current, $limit)
+      // Always grab the first $limit results each time through the loop, since
+      // the insert query below ensures that the next time this query is run,
+      // none of the results that were returned last time will be returned
+      // again.
+      ->range(0, $limit)
       ->execute();
 
     if ($result->rowCount() == 0) {
       return FALSE;
     }
-
-    $current += $limit;
 
     // Use a multi-insert here for performance.
     $insert_query = db_insert('cps_entity')
@@ -278,7 +276,7 @@ function cps_mark_current_content($entity_type, &$sandbox = NULL) {
     }
 
     $insert_query->execute();
-  } while (!isset($sandbox));
+  } while (!$process_once);
 
   return TRUE;
 }
@@ -461,7 +459,7 @@ function cps_update_7103() {
  */
 function cps_update_7104() {
   db_update('cps_entity')
-    ->condition('published', 1, '<>')
+    ->isNull('published')
     ->fields(array('published' => 0))
     ->execute();
   db_drop_index('cps_entity', 'published_changeset_id');
@@ -475,7 +473,7 @@ function cps_update_7104() {
   );
   $indexes = array(
     'indexes' => array(
-      'published_changeset_id', array('published', 'changeset_id'),
+      'published_changeset_id' => array('published', 'changeset_id'),
     ),
   );
   db_change_field('cps_entity', 'published', 'published', $field, $indexes);
@@ -496,4 +494,131 @@ function cps_update_7106() {
   db_drop_primary_key('cps_entity');
   db_add_primary_key('cps_entity', array('changeset_id', 'entity_type', 'entity_id'));
   db_add_index('cps_entity', 'entity', array('entity_type', 'entity_id'));
+}
+
+/**
+ * Add historical information for changesets affected by #2428323.
+ */
+function cps_update_7107() {
+  $types = cps_get_supported();
+  // Get an array of entity types where there has never been an entity of that
+  // type edited in a changeset. This saves unnecessary queries later on.
+  $exclude_types = [];
+  foreach ($types as $type) {
+    if (!db_query_range('SELECT 1 FROM {cps_entity} WHERE entity_type = :entity_type AND published = 0', 0, 1, array(':entity_type' => $type))->fetchField()) {
+      $exclude_types[] = $type;
+    }
+  }
+  $entity_info = entity_get_info();
+  $transaction = db_transaction();
+  try {
+    foreach ($types as $type) {
+      $base_table = $entity_info[$type]['base table'];
+      $id_key = $entity_info[$type]['entity keys']['id'];
+      $revision_key = $entity_info[$type]['entity keys']['revision'];
+      // Find all entities of this type.
+      $result = db_select($base_table, 'base')
+        ->fields('base', array($id_key, $revision_key))
+        ->execute();
+      foreach ($result as $record) {
+        // For each entity, find the oldest changeset it was edited in (or, for
+        // entities that already existed when the CPS module was installed, use
+        // the "installed" changeset). The creation date of this changeset
+        // represents the earliest possible date at which the entity itself was
+        // created. (This works for the "installed" changeset too, since the
+        // creation timestamp for that changeset is 0. However, any other
+        // changeset with a creation timestamp of 0 should be ignored since it
+        // probably dates back to an older, pre-released version of CPS that
+        // did not track changeset creation times.)
+        $oldest_changeset = db_query_range("SELECT ce.changeset_id, cc.created FROM {cps_entity} ce INNER JOIN {cps_changeset} cc ON ce.changeset_id = cc.changeset_id WHERE ce.entity_id = :id AND ce.entity_type = :type AND ((ce.published = 0 AND cc.created > 0) OR ce.changeset_id = 'installed') ORDER BY cc.created", 0, 1, array(
+          ':id' => $record->{$id_key},
+          ':type' => $type,
+        ))->fetchObject();
+        // If the entity was never edited in a changeset and either (a) didn't
+        // exist at the time the CPS module was installed, or (b) did exist but
+        // was never tracked at install via cps_mark_current_content(), then no
+        // record will be returned here. Skip further processing because this
+        // means that either the entity doesn't need historical tracking added
+        // or that it has chosen to opt out of historical tracking.
+        if (!$oldest_changeset) {
+          continue;
+        }
+        // Ensure that the entity is added to all archived changesets that were
+        // published after the above creation date. This will guarantee that it
+        // is properly tracked in all changesets that were published after the
+        // entity was created, which is what cps_add_untracked_entities() does
+        // when it runs while a changeset is being published. (It might also
+        // add it to some changesets that it doesn't need to be added to, but
+        // in practice not too many, and it's the best that can be done here.)
+        $later_changesets = db_query("SELECT changeset_id, published FROM {cps_changeset} WHERE status = :status AND published > :published AND changeset_id != 'installed'", array(
+          ':status' => 'archived',
+          ':published' => $oldest_changeset->created,
+        ))->fetchAllAssoc('changeset_id');
+        $changeset_ids_with_entity = db_query('SELECT changeset_id FROM {cps_entity} WHERE entity_id = :id AND entity_type = :type', array(
+          ':id' => $record->{$id_key},
+          ':type' => $type,
+        ))->fetchCol();
+        $changesets_missing_entity = array_diff_key($later_changesets, array_flip($changeset_ids_with_entity));
+        foreach ($changesets_missing_entity as $changeset) {
+          // To match what cps_add_untracked_entities() does, the correct
+          // revision ID to insert here would be the current revision at the
+          // time the changeset was published. However, there is no good way to
+          // get that information. Instead, if the entity was edited in a
+          // changeset published prior to this one, the version ID from that
+          // changeset is used. This ensures that entities that have been
+          // edited in multiple changesets have the correct historical state;
+          // just taking the most recent revision ID would not be correct in
+          // this case.
+          $previous_args = array(
+            ':id' => $record->{$id_key},
+            ':published' => $changeset->published,
+            ':type' => $type,
+            ':status' => 'archived',
+          );
+          // If this entity type has never been used in a changeset, just use
+          // the current version ID.
+          if (in_array($type, $exclude_types)) {
+            $vid = $record->{$revision_key};
+          }
+          // Use the revision ID from the previous changeset this entity was
+          // edited in, if it exists.
+          elseif ($vid = db_query_range('SELECT revision_id FROM {cps_entity} ce INNER JOIN {cps_changeset} cc ON ce.changeset_id = cc.changeset_id WHERE ce.entity_id = :id AND ce.entity_type = :type AND ce.published = 0 AND cc.published < :published AND cc.status = :status ORDER BY cc.published DESC', 0, 1, $previous_args)->fetchField()) {
+            // Assignment happens in the if statement, nothing else to do here.
+          }
+          // Otherwise use the current revision ID.
+          else {
+            $vid = $record->{$revision_key};
+          }
+
+          db_insert('cps_entity')
+            ->fields(array(
+              'entity_type' => $type,
+              'entity_id' => $record->{$id_key},
+              'revision_id' => $vid,
+              'changeset_id' => $changeset->changeset_id,
+              'published' => TRUE,
+            ))->execute();
+        }
+      }
+    }
+  }
+  catch (Exception $e) {
+    $transaction->rollback();
+    throw $e;
+  }
+}
+
+/**
+ * Add lock_in_select field.
+ */
+function cps_update_7108() {
+  $field = array(
+    'description' => 'True if this changeset should be locked into all users select bars when open.',
+    'type' => 'int',
+    'unsigned' => TRUE,
+    'not null' => TRUE,
+    'default' => 0,
+  );
+
+  db_add_field('cps_changeset', 'lock_in_select', $field);
 }

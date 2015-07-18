@@ -43,7 +43,7 @@ function cps_changeset_preview_form($form, &$form_state) {
     );
   }
 
-  if ($changeset_state == CPS_LIVE_STATUS) {
+  if ($changeset_state == CPS_LIVE_STATUS && entity_access('create', 'cps_changeset')) {
     $form['new'] = array(
       '#markup' => l(t('Create'), 'admin/structure/changesets/add', array(
         'query' => drupal_get_destination(),
@@ -85,6 +85,13 @@ function cps_changeset_edit_form($form, &$form_state) {
     '#title' => t('Description'),
     '#default_value' => $entity->description,
   );
+  
+  $form['info']['lock_in_select'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Lock in select'),
+    '#description' => t('If checked all users will see this site version in the site version selector bar while unpublished.'),
+    '#default_value' => $entity->lock_in_select,
+  );
 
   $form['actions'] = array(
     '#type' => 'actions',
@@ -111,6 +118,7 @@ function cps_changeset_edit_form_submit($form, &$form_state) {
   $entity = $form_state['entity'];
   $entity->name = $form_state['values']['name'];
   $entity->description = $form_state['values']['description'];
+  $entity->lock_in_select = $form_state['values']['lock_in_select'];
 
   if (!empty($entity->is_new)) {
     // Automatically move us to the new changeset context.
@@ -254,16 +262,16 @@ function cps_changeset_publish_batch_update($changeset, $entity_type, &$context)
   }
 
   $limit = 100;
-  $last = cps_add_untracked_entities($changeset_id, $entity_type, $context['sandbox']['current_item'], $limit);
+  $count = cps_add_untracked_entities($changeset_id, $entity_type, $context['sandbox']['current_item'], $limit);
 
   $context['results']['changeset'] = $changeset;
 
-  if (!$last) {
+  if (!$count) {
     $context['finished'] = TRUE;
   }
   else {
     $context['finished'] = FALSE;
-    $context['sandbox']['current_item'] = $last + 1;
+    $context['sandbox']['current_item'] = $context['sandbox']['current_item'] + $count;
   }
 }
 
@@ -344,16 +352,12 @@ function cps_changeset_unpublish_changeset_form_submit($form, &$form_state) {
     'operations' => array(
       array('cps_changeset_publish_batch_lock', array()),
       array('cps_changeset_unpublish_batch_variables', array($form_state['entity'], $form_state['previous'])),
+      array('cps_changeset_unpublish_batch_entity', array()),
     ),
     'finished' => 'cps_changeset_unpublish_batch_finished',
     'title' => t('Reverting %changeset', array('%changeset' => $form_state['entity']->name)),
     'file' => drupal_get_path('module', 'cps') . '/includes/forms.inc',
   );
-
-  foreach (cps_get_supported() as $entity_type) {
-    // For every entity type we support, add another operation for that entity type.
-    $batch['operations'][] = array('cps_changeset_unpublish_batch_entity', array());
-  }
 
   drupal_alter('cps_unpublish_changeset_batch', $batch, $form_state);
 

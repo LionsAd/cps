@@ -115,7 +115,6 @@ class CpsTest extends CpsWebTestCase {
     $node = node_load($node->nid);
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 1, $changeset->changeset_id));
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 2, 'initial'));
-    debug(db_query('SELECT nid, vid FROM {node_revision}')->fetchAll());
     // Saving the node will increment the revision ID for the draft revision in
     // this changeset.
     // The revision ID of the 'initial' revision doesn't need to change - it's
@@ -123,15 +122,13 @@ class CpsTest extends CpsWebTestCase {
     $node->title = 'Test first changeset';
     $node->is_draft_revision = TRUE;
     node_save($node);
-    debug(db_query('SELECT nid, vid FROM {node_revision}')->fetchAll());
-    debug($this->getChangesetRecords('node', $node->nid));
 
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 3, $changeset->changeset_id));
     $this->assertTrue($this->getChangesetRecords('node', $node->nid, 2, 'initial'));
 
     // Create a second changeset.
     $values = array(
-      'naame' => $this->randomName(),
+      'name' => $this->randomName(),
       'uid' => $account->uid,
     );
     $changeset2 = cps_changeset_create($values);
@@ -148,14 +145,31 @@ class CpsTest extends CpsWebTestCase {
     $node = node_load($node->nid);
     $this->assertTrue($node->status);
     $this->assertEqual($node->title, 'Test second changeset');
+
+    // Ensure loading with conditions works, this requires the entity static
+    // cache to be reset since conditions are checked against that too.
+    $nodes = node_load_multiple(FALSE, array('title' => $node->title, 'status' => 1), TRUE);
+    $this->assertTrue($nodes);
+
     cps_override_changeset($changeset->changeset_id);
     $node = node_load($node->nid);
     $this->assertTrue($node->status);
     $this->assertEqual($node->title, 'Test first changeset');
+    $nodes = node_load_multiple(FALSE, array('title' => $node->title, 'status' => 1), TRUE);
+    $this->assertTrue($nodes);
+
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'node');
+    $query->propertyCondition('title', $node->title);
+    $result = $query->execute();
+    $this->assertEqual($result['node'][$node->nid]->vid, $node->vid);
+
     cps_override_changeset(CPS_PUBLISHED_CHANGESET);
     $node = node_load($node->nid);
     $this->assertEqual($node->title, 'Test');
     $this->assertFalse($node->status);
+    $nodes = node_load_multiple(FALSE, array('title' => $node->title, 'status' => 1), TRUE);
+    $this->assertFalse($nodes);
 
     // Set the current changeset to an unrelated changeset for publishing, tests
     // a bug where items were published with data from the current changeset,

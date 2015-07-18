@@ -5,12 +5,19 @@
  */
 
 /**
+ * Implements hook_entity_info_alter().
+ */
+function cps_file_entity_entity_info_alter(&$info) {
+  $info['file']['cps'] = TRUE;
+}
+
+/**
  * Implements hook_file_entity_access().
  */
 function cps_file_entity_file_entity_access($op, $file, $account) {
   // NOTE: This function never gets called if the user has 'bypass file access'
   // permission. Be sure to check that when debugging why this doesn't work!
-  if (!cps_can_edit_entities($op, 'file', $file)) {
+  if ($op != 'download' && !cps_can_edit_entities($op, 'file', $file)) {
     return FILE_ENTITY_ACCESS_DENY;
   }
 }
@@ -43,6 +50,16 @@ function cps_file_entity_module_implements_alter(&$implementations, $hook) {
 }
 
 /**
+ * Implements hook_cps_can_entity_be_tracked().
+ */
+function cps_file_entity_cps_can_entity_be_tracked($entity_type, $entity) {
+  // Do not let CPS track temporary files.
+  if ($entity_type == 'file' && empty($entity->status)) {
+    return FALSE;
+  }
+}
+
+/**
  * Implements hook_form_FORM_ID_alter().
  *
  * For form_file_entity_edit.
@@ -56,10 +73,10 @@ function cps_file_entity_form_file_entity_edit_alter(&$form, &$form_state) {
   // If there is not currently a revision set up for this changeset,
   // force the flag to be true so file_entity_revisions knows to copy
   // the file.
-  $form['options']['new_revision']['#value'] = empty($file->changeset[$changeset_id]);
+  $form['options']['new_revision']['#value'] = !cps_is_entity_in_changeset('file', $file, $changeset_id);;
 
   if (empty($form_state['input'])) {
-    $warning = cps_changeset_edit_warning($file);
+    $warning = cps_changeset_edit_warning('file', $file);
     if ($warning) {
       drupal_set_message($warning, 'warning');
     }
@@ -75,9 +92,22 @@ function cps_file_entity_menu() {
 
   $items['file/%file/history'] = array(
     'title' => 'History',
-    'page callback' => 'cps_show_revisions_page',
+    'page callback' => 'cps_revisions_page',
     'page arguments' => array('file', 1),
     'access arguments' => array('create files'),
+    'weight' => 2,
+    'file' => 'includes/admin.inc',
+    'file path' => drupal_get_path('module', 'cps'),
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  $items['file/%file/history/%cps_changeset_optional/%cps_changeset_optional'] = array(
+    'title' => 'Compare revisions',
+    'page callback' => 'cps_diff_page',
+    'page arguments' => array('file', 1, 3, 4),
+    'access arguments' => array('create files'),
+    'file' => 'includes/admin.inc',
+    'file path' => drupal_get_path('module', 'cps'),
     'type' => MENU_LOCAL_TASK,
   );
 
@@ -90,6 +120,7 @@ function cps_file_entity_menu() {
 function cps_file_entity_admin_paths() {
   $paths = array(
     'file/*/history' => TRUE,
+    'file/*/history/*' => TRUE,
   );
   return $paths;
 }

@@ -69,7 +69,7 @@ class CPSChangesetController extends EntityAPIController {
 
         case 'delete':
           // Published changesets may not be deleted.
-          $access = empty($entity->published);
+          $access = empty($entity->published) && (user_access('edit all changesets', $account) || $entity->uid == $account->uid);
           break;
 
         case 'publish':
@@ -101,7 +101,7 @@ class CPSChangesetController extends EntityAPIController {
   public function save($entity, DatabaseTransaction $transaction = NULL) {
     $entity->changed = REQUEST_TIME;
     $status = parent::save($entity, $transaction);
-    if (isset($entity->oldStatus)) {
+    if (isset($entity->oldStatus) && $entity->oldStatus != $entity->status) {
       // Record a status change in the history.
       $record = array(
         'changeset_id' => $entity->changeset_id,
@@ -293,83 +293,10 @@ class CPSChangesetController extends EntityAPIController {
       '#suffix' => '</div>',
     );
 
-    $build['changes'] = array(
-      '#type' => 'item',
-      '#title' => t('Changes in this site version')
-    );
-
-    // Display a list of changed entities to make it easy to examine what
-    // changes this set contains.
-    $changes = $entity->getChangedEntities();
-
-    $build['changes'] = array(
-      '#attached' => array(
-        'js' => array(ctools_attach_js('collapsible-div')),
-        'css' => array(ctools_attach_css('collapsible-div')),
-      )
-    );
-
-    if (empty($changes)) {
-      $build['changes']['#markup'] = t('This site version contains no changes.');
-    }
-    $entity_info = entity_get_info();
-    foreach ($changes as $entity_type => $changed_entities) {
-      // Do not display field collection items as they are, as far as the user is
-      // concerned, part of their parent entity.
-      if ($entity_type == 'field_collection_item') {
-        continue;
-      }
-
-      $build['changes'][$entity_type] = array(
-        '#type' => 'item',
-        '#title' => t('Changed %type', array('%type' => $entity_info[$entity_type]['label'])),
-        '#prefix' => '<table class="cps-changed-entities">',
-        '#suffix' => '</table>',
-      );
-
-      foreach ($changed_entities as $entity_id => $change) {
-        $build['changes'][$entity_type][$entity_id] = cps_render_changed_entity($entity_type, $change, $entity);
-      }
-    }
-
-    if (empty($build['changes'])) {
-      $build['changes']['#markup'] = '<p class="cps-changeset-no-changes">' . t('This site version has no changes.') . '</p>';
-    }
-
-    // In the full view mode, display a history at the bottom.
+    // In the full view mode, display changes and history at the bottom.
     if ($view_mode == 'full') {
-      $statuses = cps_changeset_get_state_labels();
-      $account = user_load($entity->uid);
-      $items = array(array(
-        t('Created'),
-        format_date($entity->created),
-        format_username($account),
-        '',
-      ));
-      foreach ($entity->history as $item) {
-        $status = isset($statuses[$item->new_status]) ? $statuses[$item->new_status] : '';
-        // Special status for unpublishing.
-        if ($item->new_status == 'unpublished' && $item->previous_status == CPS_ARCHIVED_STATUS) {
-          $status = t('Unpublished');
-        }
-
-        drupal_alter('cps_changeset_history_status', $status, $entity, $item);
-        $account = user_load($item->uid);
-        $items[] = array(
-          $status,
-          format_date($item->timestamp),
-          format_username($account),
-          $item->message,
-        );
-      }
-
-      $build['history'] = array(
-        '#title' => t('Site version history'),
-        '#type' => 'item',
-        '#theme' => 'table',
-        '#header' => array(t('Status'), t('Date'), t('Author'), t('Message')),
-        '#rows' => $items
-      );
+      $build['changes'] = $entity->renderChangedEntities();
+      $build['history'] = $entity->renderHistory();
     }
 
     return $build;
