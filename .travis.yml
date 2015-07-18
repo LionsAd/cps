@@ -24,6 +24,7 @@ branches:
 matrix:
   fast_finish: true
   allow_failures:
+    - php: 7
     - php: hhvm
 
 env:
@@ -34,7 +35,7 @@ env:
 
     # Configuration variables.
     - DRUPAL_TI_MODULE_NAME="cps"
-    - DRUPAL_TI_SIMPLETEST_GROUP="Drafty"
+    - DRUPAL_TI_SIMPLETEST_GROUP="CPS"
 
     # Define runners and environment vars to include before and after the
     # main runners / environment vars.
