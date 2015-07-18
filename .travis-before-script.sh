@@ -13,5 +13,9 @@ cd "$DRUPAL_TI_DRUPAL_DIR"
 mkdir -p "$DRUPAL_TI_MODULES_PATH"
 cd "$DRUPAL_TI_MODULES_PATH"
 
+# Normal dependencies - needs to be downloaded manually as cps specifies
+# drafty_enforce, which drush does not like.
+drush dl -y drafty
+
 # Test dependencies of drafty.
 drush dl -y field_collection entity_translation title taxonomy
