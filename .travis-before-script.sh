@@ -19,3 +19,6 @@ drush dl -y drafty
 
 # Test dependencies of drafty.
 drush dl -y field_collection entity_translation title
+
+# Enable test dependencies.
+drush -y en entity_translation title
